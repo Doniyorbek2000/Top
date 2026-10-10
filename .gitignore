@@ -23,3 +23,11 @@ mobile/.tdlib-linux/
 mobile/android/app/src/main/jniLibs/
 mobile/ios/TDLib/tdjson.xcframework/
 mobile/ios/Podfile.lock
+
+# Billing service
+server/.venv/
+server/.env
+server/**/__pycache__/
+server/.pytest_cache/
+server/.ruff_cache/
+dump.rdb

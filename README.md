@@ -98,6 +98,18 @@ TDJSON_PATH=/path/to/libtdjson.so flutter test        # FFI, avtorizatsiya oqimi
 SADO_SCREENSHOTS=1 TDJSON_PATH=... flutter test test/screenshots_test.dart --update-goldens
 ```
 
+## Monetizatsiya (billing server)
+
+`server/` — Sado Pro, AI Writer, Business va tema/ikonka paketlari uchun server tomonidagi xaridni
+tekshirish va huquqlar (entitlements) xizmati. Telegram ma'lumotlari, sessiyalari va xabarlari serverga
+yuborilmaydi. Hozircha 1-bosqich (asos) tayyor, to'lovlar o'chirilgan
+(`SADO_BILLING_PAYMENTS_ENABLED=false`). Batafsil: [docs/monetization](docs/monetization/README.md).
+
+```bash
+cd server && python3.13 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest -q
+```
+
 ## Hozircha yo'q
 
 - **Push-bildirishnomalar**: ilova yopiq bo'lganda xabar kelishi uchun Firebase/APNs loyihasi va TDLib `registerDevice` kerak. Hozir ilova ochiq yoki fonda turganida lokal bildirishnomalar ishlaydi.
