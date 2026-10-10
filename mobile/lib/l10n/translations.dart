@@ -8,6 +8,7 @@ const translations = <String, Map<String, String>>{
 };
 
 const _uz = <String, String>{
+  "ad_label": "Reklama", "ad_recommended": "Tavsiya etiladi", "ad_report": "Reklama haqida shikoyat", "ad_reported": "Shikoyat yuborildi", "ad_hidden": "Reklamalar yashirildi", "ad_premium_required": "Reklamani yashirish uchun Telegram Premium kerak", "ad_about_title": "Bu reklama haqida", "ad_about_text": "Bu Telegram tomonidan ko'rsatiladigan rasmiy homiylik xabari. Sado bu reklamalarni tanlamaydi va ulardan shaxsiy ma'lumotlaringizni olmaydi.", "ad_learn_more": "Batafsil",
   // common
   'ok': 'OK', 'cancel': 'Bekor qilish', 'done': 'Tayyor', 'add': "Qo'shish", 'delete': "O'chirish", 'edit': 'Tahrirlash',
   'send': 'Yuborish', 'search': 'Qidiruv', 'settings': 'Sozlamalar', 'share': 'Ulashish', 'copy': 'Nusxa olish',
@@ -136,6 +137,7 @@ const _uz = <String, String>{
 };
 
 const _ru = <String, String>{
+  "ad_label": "Реклама", "ad_recommended": "Рекомендуется", "ad_report": "Пожаловаться на рекламу", "ad_reported": "Жалоба отправлена", "ad_hidden": "Реклама скрыта", "ad_premium_required": "Чтобы скрыть рекламу, нужен Telegram Premium", "ad_about_title": "Об этой рекламе", "ad_about_text": "Это официальное спонсорское сообщение Telegram. Sado не выбирает эту рекламу и не передаёт ей ваши личные данные.", "ad_learn_more": "Подробнее",
   'ok': 'OK', 'cancel': 'Отмена', 'done': 'Готово', 'add': 'Добавить', 'delete': 'Удалить', 'edit': 'Изменить',
   'send': 'Отправить', 'search': 'Поиск', 'settings': 'Настройки', 'share': 'Поделиться', 'copy': 'Копировать',
   'copied': 'Скопировано', 'select': 'Выбрать', 'retry': 'Повторить', 'accept': 'Принять', 'decline': 'Отклонить',
@@ -254,6 +256,7 @@ const _ru = <String, String>{
 };
 
 const _en = <String, String>{
+  "ad_label": "Ad", "ad_recommended": "Recommended", "ad_report": "Report ad", "ad_reported": "Report sent", "ad_hidden": "Ads hidden", "ad_premium_required": "Telegram Premium is required to hide ads", "ad_about_title": "About this ad", "ad_about_text": "This is an official sponsored message shown by Telegram. Sado does not choose these ads and does not share your personal data with them.", "ad_learn_more": "Learn more",
   'ok': 'OK', 'cancel': 'Cancel', 'done': 'Done', 'add': 'Add', 'delete': 'Delete', 'edit': 'Edit',
   'send': 'Send', 'search': 'Search', 'settings': 'Settings', 'share': 'Share', 'copy': 'Copy',
   'copied': 'Copied', 'select': 'Select', 'retry': 'Retry', 'accept': 'Accept', 'decline': 'Decline',

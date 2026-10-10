@@ -27,6 +27,14 @@ class ChatHistory extends ChangeNotifier {
   int? firstUnreadId;
   String? error;
 
+  /// Official Telegram sponsored messages (channels and bots). Required by the Telegram API Terms;
+  /// they are shown to every user and are not affected by ghost mode or any Sado subscription.
+  List<td.SponsoredMessage> sponsored = const [];
+
+  /// Minimum number of ordinary messages between sponsored ones; 0 = show one after all messages.
+  int sponsoredSpacing = 0;
+  final Set<int> _sponsoredViewed = {};
+
   StreamSubscription<td.Update>? _subscription;
   final Set<int> _viewed = {};
   bool _disposed = false;
@@ -56,7 +64,35 @@ class ChatHistory extends ChangeNotifier {
       initialized = true;
       _notify();
     }
+    unawaited(loadSponsored());
   }
+
+  Future<void> loadSponsored() async {
+    final chat = account.chats[chatId];
+    final eligible = chat != null && (account.isChannel(chat) || account.isBot(account.privateUser(chat)));
+    if (!eligible) return;
+    try {
+      final result = await account.send<td.SponsoredMessages>(td.GetChatSponsoredMessages(chatId: chatId));
+      sponsored = result.messages;
+      sponsoredSpacing = result.messagesBetween;
+      _notify();
+    } on TdException catch (e) {
+      debugPrint('sponsored messages unavailable: ${e.message}');
+    }
+  }
+
+  /// Reports a sponsored message as viewed once it is fully on screen. Always sent, even in ghost mode:
+  /// Telegram requires sponsored views to be reported and ghost mode only hides the user's own activity.
+  void markSponsoredViewed(int messageId) {
+    if (!_sponsoredViewed.add(messageId)) return;
+    unawaited(account
+        .send<td.Ok>(td.ViewMessages(chatId: chatId, messageIds: [messageId], source: null, forceRead: false))
+        .catchError((Object _) => const td.Ok()));
+  }
+
+  Future<void> clickSponsored(td.SponsoredMessage message, {bool isMediaClick = false}) => account.send<td.Ok>(
+        td.ClickChatSponsoredMessage(chatId: chatId, messageId: message.messageId, isMediaClick: isMediaClick, fromFullscreen: false),
+      );
 
   /// TDLib may return fewer messages than asked (only what is cached); keep asking until the page is full.
   Future<List<td.Message>> _fetchLatest() async {

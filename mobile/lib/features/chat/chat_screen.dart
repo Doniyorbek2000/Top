@@ -22,6 +22,7 @@ import 'composer.dart';
 import 'forward_picker.dart';
 import 'message_bubble.dart';
 import 'message_content.dart';
+import 'sponsored_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.chatId, this.initialMessageId, this.debugHistory});
@@ -491,12 +492,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
     final group = _account.isGroup(chat);
+    final sponsoredSlots = _history.sponsored.isNotEmpty && !_history.hasNewer ? 1 : 0;
     return ListView.builder(
       controller: _scroll,
       reverse: true,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: messages.length + (_history.hasOlder ? 1 : 0),
-      itemBuilder: (context, index) {
+      itemCount: sponsoredSlots + messages.length + (_history.hasOlder ? 1 : 0),
+      itemBuilder: (context, rawIndex) {
+        // Telegram sponsored message goes after the newest ordinary message (bottom of a reversed list).
+        if (rawIndex < sponsoredSlots) {
+          final sponsored = _history.sponsored.first;
+          return SponsoredBubble(key: ValueKey('ad_${sponsored.messageId}'), message: sponsored, history: _history);
+        }
+        final index = rawIndex - sponsoredSlots;
         if (index == messages.length) {
           return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
         }
