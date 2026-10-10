@@ -1,12 +1,3 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.pytest_cache/
-.ruff_cache/
-backend/media/
-backend/.env
-
 # Flutter
 mobile/.dart_tool/
 mobile/build/
@@ -25,4 +16,10 @@ mobile/android/key.properties
 
 .DS_Store
 .idea/
-dump.rdb
+
+# TDLib native builds (produced by mobile/tool/build_tdlib_*.sh or CI)
+mobile/.tdlib-build*/
+mobile/.tdlib-linux/
+mobile/android/app/src/main/jniLibs/
+mobile/ios/TDLib/tdjson.xcframework/
+mobile/ios/Podfile.lock
