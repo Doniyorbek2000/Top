@@ -58,6 +58,8 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
   final scheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness);
   final isDark = brightness == Brightness.dark;
   final surface = isDark ? const Color(0xFF151A21) : Colors.white;
+  // Dialogs, sheets and menus sit one step above the page.
+  final elevated = isDark ? const Color(0xFF1C232D) : Colors.white;
   final chatColors = ChatColors(
     outgoingBubble: isDark ? Color.lerp(accent, Colors.black, 0.35)! : Color.lerp(accent, Colors.white, 0.82)!,
     incomingBubble: isDark ? const Color(0xFF222A35) : Colors.white,
@@ -76,7 +78,9 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
   return ThemeData(
     useMaterial3: true,
     textTheme: textTheme,
-    colorScheme: scheme.copyWith(surface: surface, primary: accent),
+    // Neutral outline: text fields declaring InputBorder.none (composer, search) must stay borderless,
+    // so field borders are styled through the scheme rather than a theme-level enabledBorder.
+    colorScheme: scheme.copyWith(surface: surface, primary: accent, outline: isDark ? Colors.white24 : const Color(0xFFCBD3DB)),
     scaffoldBackgroundColor: surface,
     extensions: [chatColors],
     appBarTheme: AppBarTheme(
@@ -98,12 +102,102 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
       thickness: 0.5,
       space: 0.5,
     ),
-    listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 16)),
+    listTileTheme: ListTileThemeData(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      iconColor: isDark ? const Color(0xFF8D99A6) : const Color(0xFF707A86),
+      minLeadingWidth: 28,
+    ),
     inputDecorationTheme: InputDecorationTheme(
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     ),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: isDark ? const Color(0xFF2A3340) : const Color(0xFF262D36),
+      contentTextStyle: textTheme.bodyMedium?.copyWith(color: Colors.white, fontSize: 14.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+    ),
+    // Untinted surfaces everywhere: Material 3 tints dialogs, sheets and the drawer with the seed
+    // color, which reads as lavender next to the white/graphite chat UI.
+    drawerTheme: DrawerThemeData(backgroundColor: surface, surfaceTintColor: Colors.transparent, width: 300),
+    dialogTheme: DialogThemeData(
+      backgroundColor: elevated,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      titleTextStyle: textTheme.titleLarge?.copyWith(fontSize: 19, fontWeight: FontWeight.w600),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: elevated,
+      modalBackgroundColor: elevated,
+      surfaceTintColor: Colors.transparent,
+      showDragHandle: true,
+      dragHandleColor: isDark ? Colors.white24 : Colors.black26,
+      dragHandleSize: const Size(36, 4),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: elevated,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      textStyle: textTheme.bodyLarge?.copyWith(fontSize: 15.5),
+    ),
+    menuTheme: MenuThemeData(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(elevated),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+      ),
+    ),
+    cardTheme: CardThemeData(
+      color: elevated,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(64, 46),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: textTheme.labelLarge?.copyWith(fontSize: 15.5, fontWeight: FontWeight.w600),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(64, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(textStyle: textTheme.labelLarge?.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? Colors.white : (isDark ? Colors.white70 : Colors.white)),
+      trackColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? accent : (isDark ? Colors.white24 : const Color(0xFFD5DBE1))),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? accent : null),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+    ),
+    radioTheme: RadioThemeData(fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? accent : null)),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: accent, linearTrackColor: accent.withValues(alpha: 0.15)),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: accent,
+      selectionColor: accent.withValues(alpha: 0.3),
+      selectionHandleColor: accent,
+    ),
+    tabBarTheme: TabBarThemeData(
+      indicatorSize: TabBarIndicatorSize.label,
+      labelStyle: textTheme.titleSmall?.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: textTheme.titleSmall?.copyWith(fontSize: 15, fontWeight: FontWeight.w500),
+    ),
+    badgeTheme: BadgeThemeData(backgroundColor: accent, textColor: Colors.white),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(color: isDark ? const Color(0xFF2A3340) : const Color(0xE6262D36), borderRadius: BorderRadius.circular(8)),
+    ),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: CupertinoPageTransitionsBuilder(),
       TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),

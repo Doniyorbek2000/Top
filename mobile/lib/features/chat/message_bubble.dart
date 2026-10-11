@@ -107,6 +107,8 @@ class MessageBubble extends ConsumerWidget {
             _ => captionOf(content),
           };
     final hasText = text != null && text.text.isNotEmpty;
+    // Time sits at the end of the last text line when it fits (Telegram layout).
+    final inlineFooter = hasText && translation == null;
     final textColor = outgoing ? colors.outgoingText : colors.incomingText;
     final radius = Radius.circular(settings.bubbleRadius);
     final small = Radius.circular(settings.bubbleRadius / 3.5);
@@ -137,7 +139,21 @@ class MessageBubble extends ConsumerWidget {
             child: album != null ? AlbumGrid(messages: album, maxWidth: maxWidth) : MessageMedia(message: message, maxWidth: maxWidth),
           ),
         ),
-      if (hasText)
+      if (hasText && inlineFooter)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 8, 5),
+          child: Stack(
+            children: [
+              FormattedTextView(
+                text: text,
+                style: TextStyle(color: textColor, fontSize: 15.5 * settings.textScale, height: 1.3),
+                trailingSpace: _footerWidth(message, outgoing: outgoing, isChannel: isChannel) * MediaQuery.textScalerOf(context).scale(1),
+              ),
+              Positioned(right: 0, bottom: 0, child: _Footer(message: message, chat: chat, outgoing: outgoing, isChannel: isChannel)),
+            ],
+          ),
+        )
+      else if (hasText)
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
           child: FormattedTextView(
@@ -152,10 +168,11 @@ class MessageBubble extends ConsumerWidget {
           decoration: BoxDecoration(border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2))),
           child: Text(translation, style: TextStyle(color: textColor, fontSize: 15 * settings.textScale, fontStyle: FontStyle.italic)),
         ),
-      Align(
-        alignment: Alignment.bottomRight,
-        child: Padding(padding: const EdgeInsets.fromLTRB(10, 2, 8, 5), child: _Footer(message: message, chat: chat, outgoing: outgoing, isChannel: isChannel)),
-      ),
+      if (!inlineFooter)
+        Align(
+          alignment: Alignment.bottomRight,
+          child: Padding(padding: const EdgeInsets.fromLTRB(10, 2, 8, 5), child: _Footer(message: message, chat: chat, outgoing: outgoing, isChannel: isChannel)),
+        ),
       if (message.interactionInfo?.reactions?.reactions.isNotEmpty ?? false)
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
@@ -238,6 +255,17 @@ class MessageBubble extends ConsumerWidget {
     Color(0xFF3D8AD8),
     Color(0xFFD46BA4),
   ];
+}
+
+/// Room reserved at the end of the text for the time/status footer.
+double _footerWidth(td.Message message, {required bool outgoing, required bool isChannel}) {
+  var width = 40.0; // "16:09" + gap
+  if (message.isOutgoing && !isChannel) width += 18;
+  if (message.editDate > 0) width += 52;
+  if (message.isPinned) width += 15;
+  final views = message.interactionInfo?.viewCount ?? 0;
+  if (isChannel && views > 0) width += 24 + 7.0 * formatCount(views).length;
+  return width;
 }
 
 class _Footer extends StatelessWidget {
@@ -331,11 +359,25 @@ class _ReplyHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(accountProvider);
     final s = context.s;
-    final replied = ref.watch(repliedMessageProvider((reply.chatId, reply.messageId))).value;
+    final repliedState = ref.watch(repliedMessageProvider((reply.chatId, reply.messageId)));
+    final replied = repliedState.value;
     final primary = Theme.of(context).colorScheme.primary;
-    final name = replied != null ? account.senderName(replied.senderId) : '';
+    // Replies to messages from other chats (or not yet loaded) carry their origin and content inline.
+    final originName = switch (reply.origin) {
+      td.MessageOriginUser(:final senderUserId) => account.userName(senderUserId),
+      td.MessageOriginChat(:final senderChatId) => account.chats[senderChatId]?.title ?? '',
+      td.MessageOriginChannel(:final chatId) => account.chats[chatId]?.title ?? '',
+      td.MessageOriginHiddenUser(:final senderName) => senderName,
+      _ => '',
+    };
+    final name = replied != null ? account.senderName(replied.senderId) : originName;
+    final inlineContent = reply.content;
     final preview = reply.quote?.text.text ??
-        (replied != null ? messagePreview(replied, account, s) : (reply.content != null ? s.t('message') : s.t('deleted_message')));
+        (replied != null
+            ? messagePreview(replied, account, s)
+            : (inlineContent != null
+                ? (contentPreview(inlineContent, s) ?? s.t('message'))
+                : (repliedState.isLoading ? '…' : s.t('deleted_message'))));
     return GestureDetector(
       onTap: onTap,
       child: Container(

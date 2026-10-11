@@ -321,6 +321,12 @@ const _uz = <String, String>{
   'wallpaper_from_gallery': 'Galereyadan',
   'wallpaper_preview': 'Fon shunday ko\'rinadi',
   'wallpaper_reset': 'Standart',
+  'drawer_footer': 'Sado {version}\nTelegram API asosidagi norasmiy ilova',
+  'wallpaper_pattern': 'Naqsh',
+  'country_unknown': 'Mamlakat kodi',
+  'hold_to_record': 'Yozib olish uchun bosib turing',
+  'empty_chat_hint': 'Xabar yozing yoki salomlashish uchun pastdagi qo\'lni bosing.',
+  'bot_menu': 'Menyu',
 };
 
 const _ru = <String, String>{
@@ -628,6 +634,12 @@ const _ru = <String, String>{
   'wallpaper_from_gallery': 'Из галереи',
   'wallpaper_preview': 'Так будет выглядеть фон',
   'wallpaper_reset': 'По умолчанию',
+  'drawer_footer': 'Sado {version}\nНеофициальное приложение на Telegram API',
+  'wallpaper_pattern': 'Узор',
+  'country_unknown': 'Код страны',
+  'hold_to_record': 'Удерживайте для записи',
+  'empty_chat_hint': 'Напишите сообщение или нажмите на приветствие ниже.',
+  'bot_menu': 'Меню',
 };
 
 const _en = <String, String>{
@@ -932,4 +944,10 @@ const _en = <String, String>{
   'wallpaper_from_gallery': 'From gallery',
   'wallpaper_preview': 'This is how your chats will look',
   'wallpaper_reset': 'Default',
+  'drawer_footer': 'Sado {version}\nUnofficial app built on the Telegram API',
+  'wallpaper_pattern': 'Pattern',
+  'country_unknown': 'Country code',
+  'hold_to_record': 'Hold to record',
+  'empty_chat_hint': 'Send a message or tap the greeting below.',
+  'bot_menu': 'Menu',
 };

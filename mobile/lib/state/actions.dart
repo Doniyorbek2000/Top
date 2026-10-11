@@ -889,3 +889,14 @@ extension LiveActions on TelegramAccount {
         inputMessageContent: td.InputMessageText(text: formattedText(text), linkPreviewOptions: null, clearDraft: false),
       ));
 }
+
+extension BotInfoActions on TelegramAccount {
+  /// Commands, description and menu button of a bot (null for regular users).
+  Future<td.BotInfo?> botInfo(int userId) async {
+    try {
+      return (await send<td.UserFullInfo>(td.GetUserFullInfo(userId: userId))).botInfo;
+    } on TdException {
+      return null;
+    }
+  }
+}

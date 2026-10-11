@@ -12,12 +12,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:sado/app.dart';
+import 'package:sado/core/app_lock.dart';
 import 'package:sado/core/config.dart';
 import 'package:sado/core/theme.dart';
 import 'package:sado/features/auth/auth_screens.dart';
 import 'package:sado/features/chat/chat_screen.dart';
 import 'package:sado/features/home/home_screen.dart';
 import 'package:sado/features/settings/settings_screen.dart';
+import 'package:sado/features/settings/wallpaper.dart';
 import 'package:sado/l10n/strings.dart';
 import 'package:sado/state/actions.dart';
 import 'package:sado/state/chat_history.dart';
@@ -130,6 +132,8 @@ void main() {
       _user(2, 'Jasur', 'Toshmatov', lastSeen: _now - 1800),
       _user(3, 'Malika', 'Yusupova', online: true),
       _user(4, 'Bobur', 'Aliyev', lastSeen: _now - 90000),
+      _user(5, 'Sado Bot', '', bot: true),
+      _user(6, 'Nodira', 'Saidova', lastSeen: _now - 300),
     ]) {
       add(td.UpdateUser(user: user));
     }
@@ -161,6 +165,8 @@ void main() {
             'is_listened': false,
           }, minutesAgo: 1500), 400, false),
     ];
+    add(td.UpdateNewChat(chat: td.Chat.fromJson(_chatJson(5, 'Sado Bot', {'@type': 'chatTypePrivate', 'user_id': 5}))!));
+    add(td.UpdateNewChat(chat: td.Chat.fromJson(_chatJson(6, 'Nodira Saidova', {'@type': 'chatTypePrivate', 'user_id': 6}))!));
     for (final (json, last, order, pinned) in chats) {
       add(td.UpdateNewChat(chat: td.Chat.fromJson(json)!));
       add(td.UpdateChatLastMessage(chatId: json['id'] as int, lastMessage: last, positions: [
@@ -281,6 +287,46 @@ void main() {
     ]);
     await shoot(tester, 'group', ChatScreen(chatId: 55, debugHistory: h));
   }, skip: !_enabled);
+
+  testWidgets('bot chat with keyboard and formatting', (tester) async {
+    Map<String, dynamic> entity(int offset, int length, Map<String, dynamic> type) => {'@type': 'textEntity', 'offset': offset, 'length': length, 'type': type};
+    Map<String, dynamic> button(String text, Map<String, dynamic> type) => {'@type': 'inlineKeyboardButton', 'text': text, 'icon_custom_emoji_id': 0, 'style': {'@type': 'buttonStyleDefault'}, 'type': type};
+    const welcome = 'Xush kelibsiz! Bu bot buyurtmalarni qabul qiladi. Batafsil: sado.uz';
+    final botMessage = td.Message.fromJson({
+      ..._message(2, 5, 5, {
+        '@type': 'messageText',
+        'text': {
+          '@type': 'formattedText',
+          'text': welcome,
+          'entities': [
+            entity(0, 13, {'@type': 'textEntityTypeBold'}),
+            entity(37, 21, {'@type': 'textEntityTypeItalic'}),
+            entity(welcome.length - 7, 7, {'@type': 'textEntityTypeUrl'}),
+          ],
+        },
+      }, minutesAgo: 4).toJson(),
+      'reply_markup': {
+        '@type': 'replyMarkupInlineKeyboard',
+        'rows': [
+          [button('🛒 Buyurtma berish', {'@type': 'inlineKeyboardButtonTypeCallback', 'data': 'b3JkZXI='}), button('📋 Menyu', {'@type': 'inlineKeyboardButtonTypeCallback', 'data': 'bWVudQ=='})],
+          [button('Ilovani ochish', {'@type': 'inlineKeyboardButtonTypeWebApp', 'url': 'https://sado.uz'})],
+          [button('Saytga o\'tish', {'@type': 'inlineKeyboardButtonTypeUrl', 'url': 'https://sado.uz'})],
+        ],
+      },
+    })!;
+    final h = history(5, [_message(1, 5, _me, _text('/start'), minutesAgo: 5), botMessage]);
+    await shoot(tester, 'bot', ChatScreen(chatId: 5, debugHistory: h));
+  }, skip: !_enabled);
+
+  testWidgets('empty private chat', (tester) async {
+    await shoot(tester, 'empty_chat', ChatScreen(chatId: 6, debugHistory: history(6, const [])));
+  }, skip: !_enabled);
+
+  testWidgets('passcode lock', (tester) async {
+    await shoot(tester, 'lock', Scaffold(body: SafeArea(child: PinPad(title: 'PIN kodni kiriting', pin: '12', onChanged: (_) {}))));
+  }, skip: !_enabled);
+
+  testWidgets('chat background', (tester) async => shoot(tester, 'wallpaper', const WallpaperScreen()), skip: !_enabled);
 
   testWidgets('settings', (tester) async => shoot(tester, 'settings', const SettingsScreen()), skip: !_enabled);
 

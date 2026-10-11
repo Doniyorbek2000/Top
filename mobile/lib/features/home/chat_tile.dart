@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
@@ -53,11 +55,24 @@ class ChatTile extends ConsumerWidget {
       if (account.isGroup(chat) && !isServiceMessage(last)) {
         author = last.isOutgoing ? s.t('you') : account.senderName(last.senderId).split(' ').first;
       }
+      final thumb = _miniThumb(last.content);
       subtitle = Text.rich(
         TextSpan(children: [
           if (author != null && author.isNotEmpty)
             TextSpan(text: '$author: ', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.85))),
-          TextSpan(text: preview),
+          if (thumb != null)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 5),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: Image.memory(base64Decode(thumb.data), width: 18, height: 18, fit: BoxFit.cover, gaplessPlayback: true),
+                ),
+              ),
+            ),
+          // The thumbnail replaces the 🖼/🎬 emoji of the preview.
+          TextSpan(text: thumb != null ? preview.replaceFirst(RegExp(r'^(🖼|🎬|🎞) '), '') : preview),
         ]),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -85,11 +100,15 @@ class ChatTile extends ConsumerWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: () => showChatActions(context, ref, chat, list),
-        child: Padding(
+        // Hairline separator starting under the title, like Telegram.
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: _DividerDecoration(color: theme.dividerColor, indent: 78),
+          child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 7, 14, 7),
           child: Row(
             children: [
-              ChatAvatar(chatId: chat.id, size: 56),
+              _StoryRing(chatId: chat.id, child: ChatAvatar(chatId: chat.id, size: 56)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -152,9 +171,17 @@ class ChatTile extends ConsumerWidget {
             ],
           ),
         ),
+        ),
       ),
     );
   }
+
+  static td.Minithumbnail? _miniThumb(td.MessageContent content) => switch (content) {
+        td.MessagePhoto(:final photo) => photo.minithumbnail,
+        td.MessageVideo(:final video) => video.minithumbnail,
+        td.MessageAnimation(:final animation) => animation.minithumbnail,
+        _ => null,
+      };
 
   static bool _isVerified(TelegramAccount account, td.Chat chat) {
     final status = account.privateUser(chat)?.verificationStatus ?? account.supergroupOf(chat)?.verificationStatus;
@@ -271,5 +298,61 @@ Future<void> showChatActions(BuildContext context, WidgetRef ref, td.Chat chat, 
         destructive: true,
       );
       if (ok && context.mounted) await guard(context, () => account.deleteChat(chat));
+  }
+}
+
+/// Paints a single hairline at the bottom edge, starting at [indent].
+class _DividerDecoration extends Decoration {
+  const _DividerDecoration({required this.color, required this.indent});
+
+  final Color color;
+  final double indent;
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _DividerPainter(color, indent);
+}
+
+class _DividerPainter extends BoxPainter {
+  _DividerPainter(this.color, this.indent);
+
+  final Color color;
+  final double indent;
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final size = configuration.size;
+    if (size == null) return;
+    final y = offset.dy + size.height - 0.25;
+    canvas.drawLine(Offset(offset.dx + indent, y), Offset(offset.dx + size.width, y), Paint()..color = color..strokeWidth = 0.5);
+  }
+}
+
+/// Telegram's story ring around chat avatars while the chat has unseen stories.
+class _StoryRing extends ConsumerWidget {
+  const _StoryRing({required this.chatId, required this.child});
+
+  final int chatId;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feed = ref.watch(storyFeedProvider);
+    final stories = feed.where((e) => e.chatId == chatId).firstOrNull;
+    if (stories == null) return child;
+    final unread = stories.stories.any((s) => s.storyId > stories.maxReadStoryId);
+    final primary = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: unread ? SweepGradient(colors: [primary, const Color(0xFF34C3A8), const Color(0xFF7CD957), primary]) : null,
+        color: unread ? null : Theme.of(context).dividerColor,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(1.6),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: Theme.of(context).colorScheme.surface),
+        child: SizedBox.square(dimension: 48.8, child: FittedBox(child: child)),
+      ),
+    );
   }
 }

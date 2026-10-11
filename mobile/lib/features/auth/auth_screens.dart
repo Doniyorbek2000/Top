@@ -183,6 +183,36 @@ class _CredentialsScreenState extends ConsumerState<CredentialsScreen> {
 
 // ------------------------------------------------------------------ phone number
 
+/// TDLib's offline phone number data (works before login): country and grouping for a digit prefix.
+td.PhoneNumberInfo? phoneInfo(String digits) {
+  if (digits.isEmpty) return null;
+  try {
+    final result = TdClient.executeStatic(td.GetPhoneNumberInfoSync(languageCode: 'en', phoneNumberPrefix: digits))?.toTdObject();
+    return result is td.PhoneNumberInfo ? result : null;
+  } on Object {
+    return null;
+  }
+}
+
+/// Formats "+998901234567" as "+998 90 123 45 67" while typing, keeping the cursor at the end.
+class PhoneNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return const TextEditingValue(text: '+', selection: TextSelection.collapsed(offset: 1));
+    final info = phoneInfo(digits);
+    var text = '+$digits';
+    if (info != null && info.countryCallingCode.isNotEmpty && digits.startsWith(info.countryCallingCode)) {
+      // TDLib pads unknown positions with '-'; keep only the typed part of the pattern.
+      final rest = info.formattedPhoneNumber.split('-').first.trimRight();
+      text = '+${info.countryCallingCode}${rest.isEmpty ? '' : ' $rest'}';
+      final typed = digits.length - info.countryCallingCode.length;
+      if (rest.replaceAll(' ', '').length != typed) text = '+$digits';
+    }
+    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
+}
+
 class PhoneScreen extends ConsumerStatefulWidget {
   const PhoneScreen({super.key});
 
@@ -191,24 +221,33 @@ class PhoneScreen extends ConsumerStatefulWidget {
 }
 
 class _PhoneScreenState extends ConsumerState<PhoneScreen> with _Submitting {
-  final _phone = TextEditingController(text: '+998 ');
+  final _phone = TextEditingController(text: '+998');
+  td.CountryInfo? _country;
 
   @override
   void initState() {
     super.initState();
+    _updateCountry();
     unawaited(_guessCountryCode());
   }
 
   Future<void> _guessCountryCode() async {
     try {
       final country = await ref.read(accountProvider).send<td.Text>(const td.GetCountryCode());
-      if (!mounted || _phone.text.trim() != '+998') return;
+      if (!mounted || _phone.text.replaceAll(' ', '') != '+998') return;
       const prefixes = {'UZ': '+998', 'RU': '+7', 'KZ': '+7', 'KG': '+996', 'TJ': '+992', 'TM': '+993', 'TR': '+90', 'US': '+1'};
       final prefix = prefixes[country.text];
-      if (prefix != null) _phone.text = '$prefix ';
+      if (prefix != null) _phone.text = prefix;
+      _updateCountry();
     } on TdException {
       // Keep the default prefix.
     }
+  }
+
+  void _updateCountry() {
+    final info = phoneInfo(_phone.text.replaceAll(RegExp(r'\D'), ''));
+    final country = info?.country;
+    if (country?.countryCode != _country?.countryCode) setState(() => _country = country);
   }
 
   @override
@@ -242,12 +281,30 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> with _Submitting {
       onSubmit: _send,
       busy: busy,
       children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: Padding(
+            key: ValueKey(_country?.countryCode),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Text(_country?.flagEmoji ?? '🌐', style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                Text(
+                  _country?.name ?? context.t('country_unknown'),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: _country == null ? Theme.of(context).hintColor : null),
+                ),
+              ],
+            ),
+          ),
+        ),
         TextField(
           controller: _phone,
           autofocus: true,
           keyboardType: TextInputType.phone,
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d+ \-()]'))],
-          style: const TextStyle(fontSize: 22, letterSpacing: 1),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d+ \-()]')), PhoneNumberFormatter()],
+          onChanged: (_) => _updateCountry(),
+          style: const TextStyle(fontSize: 22, letterSpacing: 1.2, fontFeatures: [FontFeature.tabularFigures()]),
           decoration: InputDecoration(labelText: context.t('phone_number'), errorText: errorMessage),
           onSubmitted: (_) => _send(),
         ),

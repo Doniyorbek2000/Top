@@ -137,8 +137,11 @@ String _withCaption(String icon, String label, td.FormattedText? caption) {
 }
 
 /// One-line preview for chat lists, reply bars and notifications.
-String messagePreview(td.Message message, TelegramAccount account, Strings s) {
-  final content = message.content;
+String messagePreview(td.Message message, TelegramAccount account, Strings s) =>
+    contentPreview(message.content, s) ?? serviceMessageText(message, account, s) ?? s.t('unsupported_message');
+
+/// Preview of message content alone (also used for replies whose original message is not loaded).
+String? contentPreview(td.MessageContent content, Strings s) {
   switch (content) {
     case td.MessageText(:final text):
       return text.text;
@@ -181,7 +184,7 @@ String messagePreview(td.Message message, TelegramAccount account, Strings s) {
     case td.MessageInvoice(:final productInfo):
       return '🧾 ${productInfo.title}';
     default:
-      return serviceMessageText(message, account, s) ?? s.t('unsupported_message');
+      return null;
   }
 }
 

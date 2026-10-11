@@ -43,14 +43,21 @@ class SettingsScreen extends ConsumerWidget {
                 child: UserAvatar(userId: me.id, size: 64, showOnline: false),
               ),
               title: Text('${me.firstName} ${me.lastName}'.trim(), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600)),
-              subtitle: Text(['+${me.phoneNumber}', if (username != null) '@$username'].join('  •  ')),
-              trailing: const Icon(Icons.edit_rounded),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 2),
+                  Text('+${me.phoneNumber}'),
+                  if (username != null) Text('@$username', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                ],
+              ),
+              trailing: Icon(Icons.edit_rounded, color: Theme.of(context).hintColor),
               onTap: () => _push(context, const EditProfileScreen()),
             ),
           const Divider(),
           SectionHeader(s.t('sado_features')),
           SwitchListTile(
-            secondary: const Icon(Icons.visibility_off_rounded),
+            secondary: const TileIcon(Icons.visibility_off_rounded, Color(0xFF5A6B7F)),
             title: Text(s.t('ghost_mode')),
             subtitle: Text(s.t('ghost_mode_hint')),
             value: settings.ghostMode,
@@ -60,7 +67,7 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.translate_rounded),
+            leading: const TileIcon(Icons.translate_rounded, Color(0xFF2E9BF0)),
             title: Text(s.t('translate_to')),
             subtitle: Text(Strings.languageNames[settings.translateTo] ?? settings.translateTo),
             onTap: () async {
@@ -69,7 +76,7 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.favorite_rounded),
+            leading: const TileIcon(Icons.favorite_rounded, Color(0xFFE5486A)),
             title: Text(s.t('quick_reaction')),
             trailing: Text(settings.quickReaction, style: const TextStyle(fontSize: 24)),
             onTap: () async {
@@ -95,14 +102,14 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.tab_rounded),
+            secondary: const TileIcon(Icons.tab_rounded, Color(0xFF7C4DFF)),
             title: Text(s.t('chat_type_tabs')),
             subtitle: Text(s.t('chat_type_tabs_hint')),
             value: settings.chatTypeTabs,
             onChanged: notifier.setChatTypeTabs,
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.keyboard_return_rounded),
+            secondary: const TileIcon(Icons.keyboard_return_rounded, Color(0xFF8E8E93)),
             title: Text(s.t('send_by_enter')),
             value: settings.sendByEnter,
             onChanged: notifier.setSendByEnter,
@@ -110,47 +117,47 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           SectionHeader(s.t('settings')),
           ListTile(
-            leading: const Icon(Icons.folder_rounded),
+            leading: const TileIcon(Icons.folder_rounded, Color(0xFF2E9BF0)),
             title: Text(s.t('chat_folders')),
             onTap: () => _push(context, const FoldersScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.lock_rounded),
+            leading: const TileIcon(Icons.lock_rounded, Color(0xFF8E8E93)),
             title: Text(s.t('privacy')),
             onTap: () => _push(context, const PrivacyScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.pin_rounded),
+            leading: const TileIcon(Icons.pin_rounded, Color(0xFF0FA3B1)),
             title: Text(s.t('passcode_lock')),
             onTap: () => _push(context, const PasscodeSettingsScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.shield_rounded),
+            leading: const TileIcon(Icons.shield_rounded, Color(0xFF2EAD5B)),
             title: Text(s.t('two_step')),
             onTap: () => _push(context, const TwoStepScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.data_usage_rounded),
+            leading: const TileIcon(Icons.data_usage_rounded, Color(0xFF2EAD5B)),
             title: Text(s.t('data_storage')),
             onTap: () => _push(context, const StorageScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.vpn_lock_rounded),
+            leading: const TileIcon(Icons.vpn_lock_rounded, Color(0xFF2E9BF0)),
             title: Text(s.t('proxy')),
             onTap: () => _push(context, const ProxyScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.devices_rounded),
+            leading: const TileIcon(Icons.devices_rounded, Color(0xFFFF8A1F)),
             title: Text(s.t('devices')),
             onTap: () => _push(context, const SessionsScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.palette_rounded),
+            leading: const TileIcon(Icons.palette_rounded, Color(0xFF0FA3B1)),
             title: Text(s.t('appearance')),
             onTap: () => _push(context, const AppearanceScreen()),
           ),
           ListTile(
-            leading: const Icon(Icons.language_rounded),
+            leading: const TileIcon(Icons.language_rounded, Color(0xFF7C4DFF)),
             title: Text(s.t('language')),
             subtitle: Text(Strings.languageNames[settings.localeCode] ?? settings.localeCode),
             onTap: () async {
@@ -160,7 +167,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.help_outline_rounded),
+            leading: const TileIcon(Icons.help_outline_rounded, Color(0xFFFF8A1F)),
             title: Text(s.t('telegram_faq')),
             onTap: () => launchUrl(Uri.parse('https://telegram.org/faq'), mode: LaunchMode.externalApplication),
           ),

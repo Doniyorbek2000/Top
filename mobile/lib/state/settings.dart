@@ -33,6 +33,7 @@ class AppSettings {
     this.autoplayGifs = true,
     this.hiddenChatIds = const {},
     this.wallpaper = '',
+    this.wallpaperPattern = true,
   });
 
   final ThemeMode themeMode;
@@ -63,6 +64,7 @@ class AppSettings {
 
   /// Chat background: '' default, 'color:AARRGGBB', 'gradient:N' or 'file:/path'.
   final String wallpaper;
+  final bool wallpaperPattern;
 
   Color get accent => accentPalette[accentIndex.clamp(0, accentPalette.length - 1)];
 
@@ -85,6 +87,7 @@ class AppSettings {
     bool? autoplayGifs,
     Set<int>? hiddenChatIds,
     String? wallpaper,
+    bool? wallpaperPattern,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -105,6 +108,7 @@ class AppSettings {
         autoplayGifs: autoplayGifs ?? this.autoplayGifs,
         hiddenChatIds: hiddenChatIds ?? this.hiddenChatIds,
         wallpaper: wallpaper ?? this.wallpaper,
+        wallpaperPattern: wallpaperPattern ?? this.wallpaperPattern,
       );
 }
 
@@ -137,6 +141,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       autoplayGifs: _prefs.getBool('autoplayGifs') ?? true,
       hiddenChatIds: {for (final id in _prefs.getStringList('hiddenChats') ?? const <String>[]) ?int.tryParse(id)},
       wallpaper: _prefs.getString('wallpaper') ?? '',
+      wallpaperPattern: _prefs.getBool('wallpaperPattern') ?? true,
     );
   }
 
@@ -220,6 +225,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     hidden ? next.add(chatId) : next.remove(chatId);
     _prefs.setStringList('hiddenChats', [for (final id in next) '$id']);
     state = state.copyWith(hiddenChatIds: next);
+  }
+
+  void setWallpaperPattern(bool value) {
+    _prefs.setBool('wallpaperPattern', value);
+    state = state.copyWith(wallpaperPattern: value);
   }
 
   void setWallpaper(String value) {

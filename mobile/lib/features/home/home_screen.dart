@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 
 import '../../core/app_lock.dart';
+import '../../core/config.dart';
 import '../../core/formatters.dart';
 import '../../core/tdlib/td_client.dart';
 import '../../l10n/strings.dart';
@@ -428,6 +429,16 @@ class _HomeDrawerState extends ConsumerState<HomeDrawer> {
             onTap: () => _push(const ArchiveScreen()),
           ),
           ListTile(
+            leading: const Icon(Icons.add_a_photo_outlined),
+            title: Text(s.t('add_story')),
+            onTap: () {
+              // The drawer is closing; run the flow on the navigator's (home) context.
+              final home = Navigator.of(context).context;
+              Navigator.pop(context);
+              postStoryFlow(home, ref);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.download_rounded),
             title: Text(s.t('downloads')),
             onTap: () => _push(const DownloadsScreen()),
@@ -463,6 +474,14 @@ class _HomeDrawerState extends ConsumerState<HomeDrawer> {
             leading: const Icon(Icons.settings_rounded),
             title: Text(s.t('settings')),
             onTap: () => _push(const SettingsScreen()),
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+            child: Text(
+              s.t('drawer_footer', {'version': AppConfig.appVersion}),
+              style: TextStyle(fontSize: 12.5, color: theme.hintColor, height: 1.4),
+            ),
           ),
         ],
       ),

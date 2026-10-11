@@ -9,6 +9,10 @@ Telegram'ning barcha chatlari, kanallari va guruhlari, ustiga Plus Messenger, Ni
 |---|---|---|---|---|
 | ![](mobile/test/screenshots/home.png) | ![](mobile/test/screenshots/chat.png) | ![](mobile/test/screenshots/group.png) | ![](mobile/test/screenshots/drawer.png) | ![](mobile/test/screenshots/home_dark.png) |
 
+| Bot va tugmalar | Sozlamalar | Kirish | PIN qulf | Chat foni |
+|---|---|---|---|---|
+| ![](mobile/test/screenshots/bot.png) | ![](mobile/test/screenshots/settings.png) | ![](mobile/test/screenshots/login.png) | ![](mobile/test/screenshots/lock.png) | ![](mobile/test/screenshots/wallpaper.png) |
+
 ## Imkoniyatlar
 
 **Telegram asoslari**

@@ -34,10 +34,13 @@ td.PhotoSize? bestPhotoSize(td.Photo photo, {int target = 800}) {
 
 /// Renders a FormattedText with Telegram entities (links, mentions, bold, code, spoilers...).
 class FormattedTextView extends StatefulWidget {
-  const FormattedTextView({super.key, required this.text, this.style, this.onMention});
+  const FormattedTextView({super.key, required this.text, this.style, this.onMention, this.trailingSpace = 0});
 
   final td.FormattedText text;
   final TextStyle? style;
+
+  /// Invisible room at the end of the last line (the bubble draws the time there when it fits).
+  final double trailingSpace;
   final void Function(String username)? onMention;
 
   @override
@@ -90,6 +93,7 @@ class _FormattedTextViewState extends State<FormattedTextView> {
       cursor = end;
     }
     if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor)));
+    if (widget.trailingSpace > 0) spans.add(WidgetSpan(child: SizedBox(width: widget.trailingSpace, height: 1)));
     return Text.rich(TextSpan(style: base, children: spans));
   }
 

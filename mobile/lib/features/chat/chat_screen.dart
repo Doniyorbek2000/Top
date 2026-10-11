@@ -597,6 +597,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final s = context.s;
     if (!_history.initialized) return const Center(child: CircularProgressIndicator());
     if (messages.isEmpty) {
+      if (_account.privateUser(chat) != null && !_account.isSavedMessages(chat) && _account.canSendMessages(chat) && !_account.isBot(_account.privateUser(chat))) {
+        return Center(child: _EmptyChatCard(onGreet: () => guard(context, () => _account.sendText(chat.id, '👋'))));
+      }
       return Center(
         child: ServiceMessage(text: s.t(_account.isSavedMessages(chat) ? 'saved_empty' : 'no_messages')),
       );
@@ -720,6 +723,37 @@ class _PinnedBar extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// First-message card for an empty private chat (Telegram's greeting prompt).
+class _EmptyChatCard extends StatelessWidget {
+  const _EmptyChatCard({required this.onGreet});
+
+  final VoidCallback onGreet;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.s;
+    return Container(
+      margin: const EdgeInsets.all(32),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(s.t('no_messages'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Text(s.t('empty_chat_hint'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          const SizedBox(height: 12),
+          InkWell(
+            borderRadius: BorderRadius.circular(40),
+            onTap: onGreet,
+            child: const Padding(padding: EdgeInsets.all(8), child: Text('👋', style: TextStyle(fontSize: 56))),
+          ),
+        ],
       ),
     );
   }

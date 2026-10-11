@@ -22,6 +22,7 @@ import '../../state/settings.dart';
 import '../../state/telegram.dart';
 import '../../widgets/common.dart';
 import '../contacts/contacts_screen.dart';
+import '../webapp/web_app_screen.dart';
 import 'composer_panels.dart';
 
 class Composer extends ConsumerStatefulWidget {
@@ -64,6 +65,10 @@ class ComposerState extends ConsumerState<Composer> {
   Timer? _suggestTimer;
   int _suggestGeneration = 0;
 
+  /// Commands and menu button of the bot in a private bot chat.
+  td.BotInfo? _botInfo;
+  List<td.BotCommand> _commandMatches = const [];
+
   // Voice recording state.
   bool _recording = false;
   DateTime? _recordStart;
@@ -84,6 +89,12 @@ class ComposerState extends ConsumerState<Composer> {
       _hasText = _controller.text.trim().isNotEmpty;
     }
     _controller.addListener(_onChanged);
+    final bot = _account.privateUser(widget.chat);
+    if (_account.isBot(bot)) {
+      unawaited(_account.botInfo(bot!.id).then((info) {
+        if (mounted) setState(() => _botInfo = info);
+      }));
+    }
     _focus.addListener(() {
       if (_focus.hasFocus && _showEmoji) setState(() => _showEmoji = false);
     });
@@ -149,6 +160,12 @@ class ComposerState extends ConsumerState<Composer> {
   void _scheduleSuggestions() {
     _suggestTimer?.cancel();
     final text = _controller.text;
+    final commands = _botInfo?.commands ?? const <td.BotCommand>[];
+    final commandQuery = RegExp(r'^/(\w*)$').firstMatch(text);
+    final matches = commandQuery == null
+        ? const <td.BotCommand>[]
+        : commands.where((c) => c.command.startsWith(commandQuery.group(1)!.toLowerCase())).toList();
+    if (matches.length != _commandMatches.length || matches.isNotEmpty) setState(() => _commandMatches = matches);
     final inline = _inlinePattern.firstMatch(text);
     final cursor = _controller.selection.baseOffset;
     final beforeCursor = cursor >= 0 && cursor <= text.length ? text.substring(0, cursor) : text;
@@ -239,6 +256,36 @@ class ComposerState extends ConsumerState<Composer> {
       _inlineBot = null;
     });
     await guard(context, () => _account.sendInlineResult(widget.chat.id, queryId, resultId, replyToId: replyId));
+  }
+
+  Future<void> _sendCommand(td.BotCommand command) async {
+    _controller.clear();
+    setState(() => _commandMatches = const []);
+    widget.onSent();
+    await guard(context, () => _account.sendText(widget.chat.id, '/${command.command}'));
+  }
+
+  /// Bot menu: the bot's Mini App when it defines one, otherwise its command list.
+  Future<void> _openBotMenu() async {
+    final info = _botInfo;
+    final bot = _account.privateUser(widget.chat);
+    if (info == null || bot == null) return;
+    final menu = info.menuButton;
+    if (menu != null && menu.url.isNotEmpty) {
+      await openInlineWebApp(context, ref, chatId: widget.chat.id, botUserId: bot.id, url: menu.url);
+      return;
+    }
+    final command = await showModalBottomSheet<td.BotCommand>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.6),
+          child: _CommandList(commands: info.commands, onPick: (c) => Navigator.pop(context, c), maxHeight: double.infinity),
+        ),
+      ),
+    );
+    if (command != null && mounted) await _sendCommand(command);
   }
 
   Future<void> _sendSticker(td.Sticker sticker) async {
@@ -659,12 +706,15 @@ class ComposerState extends ConsumerState<Composer> {
     final reference = widget.editing ?? widget.replyTo;
     return Material(
       color: theme.colorScheme.surface,
+      shape: Border(top: BorderSide(color: theme.dividerColor, width: 0.5)),
       child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_inlineResults != null)
+            if (_commandMatches.isNotEmpty)
+              _CommandList(commands: _commandMatches, onPick: _sendCommand)
+            else if (_inlineResults != null)
               InlineResultsPanel(
                 results: _inlineResults!,
                 onPick: (id) => _sendInlineResult(_inlineResults!.inlineQueryId, id),
@@ -698,9 +748,25 @@ class ComposerState extends ConsumerState<Composer> {
 
   Widget _inputRow(Strings s, AppSettings settings) {
     final theme = Theme.of(context);
+    final botMenu = _botInfo?.menuButton;
+    final hasBotMenu = !_hasText && ((botMenu != null && botMenu.url.isNotEmpty) || (_botInfo?.commands.isNotEmpty ?? false));
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        if (hasBotMenu)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 0, 6),
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              ),
+              onPressed: _openBotMenu,
+              icon: Icon(botMenu != null && botMenu.url.isNotEmpty ? Icons.apps_rounded : Icons.menu_rounded, size: 18),
+              label: Text(botMenu != null && botMenu.text.isNotEmpty ? botMenu.text : s.t('bot_menu'), style: const TextStyle(fontSize: 14)),
+            ),
+          ),
         IconButton(
           icon: Icon(_showEmoji ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined, color: theme.hintColor),
           onPressed: () {
@@ -744,16 +810,27 @@ class ComposerState extends ConsumerState<Composer> {
           ),
         if (!_hasText && widget.editing == null)
           IconButton(icon: Icon(Icons.attach_file_rounded, color: theme.hintColor), onPressed: _attach),
-        if (_hasText || widget.editing != null)
-          GestureDetector(
-            onLongPress: widget.editing == null ? _sendOptions : null,
-            child: IconButton(
-              icon: Icon(widget.editing != null ? Icons.check_circle_rounded : Icons.send_rounded, color: theme.colorScheme.primary),
-              onPressed: _send,
-            ),
-          )
-        else
-          GestureDetector(
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 160),
+          transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: FadeTransition(opacity: animation, child: child)),
+          child: _hasText || widget.editing != null
+              ? GestureDetector(
+                  key: const ValueKey('send'),
+                  onLongPress: widget.editing == null ? _sendOptions : null,
+                  child: IconButton(
+                    icon: Icon(widget.editing != null ? Icons.check_circle_rounded : Icons.send_rounded, color: theme.colorScheme.primary),
+                    onPressed: _send,
+                  ),
+                )
+              : _micButton(theme),
+        ),
+      ],
+    );
+  }
+
+  Widget _micButton(ThemeData theme) => GestureDetector(
+            key: const ValueKey('mic'),
+            onTap: () => showToast(context, context.t('hold_to_record')),
             onLongPressStart: (_) => _startRecording(),
             onLongPressMoveUpdate: (details) {
               setState(() => _dragOffset = details.offsetFromOrigin.dx);
@@ -764,10 +841,7 @@ class ComposerState extends ConsumerState<Composer> {
               padding: const EdgeInsets.all(12),
               child: Icon(Icons.mic_rounded, color: theme.hintColor),
             ),
-          ),
-      ],
-    );
-  }
+          );
 
   Widget _recordingRow(Strings s) {
     final elapsed = DateTime.now().difference(_recordStart ?? DateTime.now());
@@ -985,4 +1059,31 @@ Future<int?> pickScheduleTime(BuildContext context) async {
   final at = DateTime(date.year, date.month, date.day, time.hour, time.minute);
   if (!at.isAfter(now.add(const Duration(seconds: 30)))) return null;
   return at.millisecondsSinceEpoch ~/ 1000;
+}
+
+class _CommandList extends StatelessWidget {
+  const _CommandList({required this.commands, required this.onPick, this.maxHeight = 220});
+
+  final List<td.BotCommand> commands;
+  final void Function(td.BotCommand command) onPick;
+  final double maxHeight;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: ListView.builder(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          itemCount: commands.length,
+          itemBuilder: (context, index) {
+            final command = commands[index];
+            return ListTile(
+              dense: true,
+              title: Text('/${command.command}', style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
+              subtitle: command.description.isEmpty ? null : Text(command.description, maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => onPick(command),
+            );
+          },
+        ),
+      );
 }

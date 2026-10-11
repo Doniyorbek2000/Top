@@ -245,7 +245,6 @@ class _InlineButtonState extends ConsumerState<_InlineButton> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final disabled = widget.button.type is td.InlineKeyboardButtonTypeDisabled;
     final accent = _styleColor(context, widget.button.style);
     final icon = _icon;
@@ -255,15 +254,14 @@ class _InlineButtonState extends ConsumerState<_InlineButton> {
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: disabled ? null : _press,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 38),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          alignment: Alignment.center,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40),
           child: Stack(
-            alignment: Alignment.center,
             children: [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: icon == null ? 0 : 10),
+              Container(
+                width: double.infinity,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: _busy
                     ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : Text(
@@ -274,7 +272,7 @@ class _InlineButtonState extends ConsumerState<_InlineButton> {
                         style: TextStyle(color: disabled ? Colors.white54 : Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
                       ),
               ),
-              if (icon != null) Positioned(right: -2, top: -2, child: Icon(icon, size: 12, color: scheme.onPrimary)),
+              if (icon != null) Positioned(top: 4, right: 5, child: Icon(icon, size: 11, color: Colors.white.withValues(alpha: 0.9))),
             ],
           ),
         ),

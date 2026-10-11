@@ -26,14 +26,16 @@ class StoriesBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final feed = ref.watch(storyFeedProvider);
+    // Nothing to show until someone has an active story; posting lives in the drawer.
+    if (feed.isEmpty) return const SizedBox.shrink();
     final account = ref.watch(accountProvider);
-    final primary = Theme.of(context).colorScheme.primary;
     final hasOwn = feed.any((e) => e.chatId == account.myId);
-    return SizedBox(
-      height: 96,
+    return Container(
+      height: 104,
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 0.5))),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
         itemCount: feed.length + (hasOwn ? 0 : 1),
         itemBuilder: (context, rawIndex) {
           if (!hasOwn && rawIndex == 0) return const _AddStoryTile();
@@ -41,41 +43,84 @@ class StoriesBar extends ConsumerWidget {
           final entry = feed[index];
           final chat = account.chats[entry.chatId];
           final unread = _hasUnread(entry);
-          final isMe = chat != null && account.isSavedMessages(chat);
-          return InkWell(
-            borderRadius: BorderRadius.circular(12),
+          final isMe = entry.chatId == account.myId;
+          return _StoryAvatar(
+            chatId: entry.chatId,
+            label: isMe ? context.t('my_story') : (chat?.title ?? ''),
+            unread: unread,
             onTap: () => Navigator.of(context).push(PageRouteBuilder<void>(
               opaque: true,
               pageBuilder: (_, _, _) => StoryViewer(feed: feed, initialIndex: index),
               transitionsBuilder: (_, animation, _, child) => FadeTransition(opacity: animation, child: child),
             )),
-            child: SizedBox(
-              width: 72,
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onLongPress: isMe ? () => postStoryFlow(context, ref) : null,
-                    child: Container(
-                    padding: const EdgeInsets.all(2.5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: unread ? primary : Theme.of(context).dividerColor, width: 2.2),
-                    ),
-                    child: ChatAvatar(chatId: entry.chatId, size: 50, showOnline: false),
-                  ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isMe ? context.t('my_story') : (chat?.title ?? ''),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, fontWeight: unread ? FontWeight.w600 : FontWeight.w400),
-                  ),
-                ],
-              ),
-            ),
+            onLongPress: isMe ? () => postStoryFlow(context, ref) : null,
           );
         },
+      ),
+    );
+  }
+}
+
+/// Avatar with Telegram's story ring: a gradient while there are unseen stories, a hairline after.
+class _StoryAvatar extends StatelessWidget {
+  const _StoryAvatar({required this.chatId, required this.label, required this.unread, required this.onTap, this.onLongPress, this.badge});
+
+  final int chatId;
+  final String label;
+  final bool unread;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final Widget? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final surface = Theme.of(context).colorScheme.surface;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: SizedBox(
+        width: 70,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 62,
+                  height: 62,
+                  padding: EdgeInsets.all(unread ? 2.4 : 1.2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: unread
+                        ? SweepGradient(colors: [primary, const Color(0xFF34C3A8), const Color(0xFF7CD957), primary])
+                        : null,
+                    color: unread ? null : Theme.of(context).dividerColor,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(2.2),
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: surface),
+                    child: ChatAvatar(chatId: chatId, size: 52, showOnline: false),
+                  ),
+                ),
+                if (badge != null) Positioned(right: 0, bottom: 0, child: badge!),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+                color: unread ? null : Theme.of(context).hintColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -423,27 +468,14 @@ class _AddStoryTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(accountProvider);
     final primary = Theme.of(context).colorScheme.primary;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
+    return _StoryAvatar(
+      chatId: account.myId,
+      label: context.t('add_story'),
+      unread: false,
       onTap: () => postStoryFlow(context, ref),
-      child: SizedBox(
-        width: 72,
-        child: Column(
-          children: [
-            Stack(
-              children: [
-                Padding(padding: const EdgeInsets.all(4.7), child: UserAvatar(userId: account.myId, size: 50, showOnline: false)),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: CircleAvatar(radius: 10, backgroundColor: primary, child: const Icon(Icons.add_rounded, size: 16, color: Colors.white)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(context.t('add_story'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-          ],
-        ),
+      badge: Container(
+        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2)),
+        child: CircleAvatar(radius: 10, backgroundColor: primary, child: const Icon(Icons.add_rounded, size: 15, color: Colors.white)),
       ),
     );
   }

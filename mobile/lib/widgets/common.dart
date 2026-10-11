@@ -308,3 +308,26 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Colored rounded-square icon used in settings lists (Telegram/iOS style).
+class TileIcon extends StatelessWidget {
+  const TileIcon(this.icon, this.color, {super.key});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(9),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color.lerp(color, Colors.white, 0.12)!, color],
+          ),
+        ),
+        child: Icon(icon, size: 19, color: Colors.white),
+      );
+}

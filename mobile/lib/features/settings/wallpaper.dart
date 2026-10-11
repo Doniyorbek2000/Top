@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/theme.dart';
 import '../../l10n/strings.dart';
 import '../../state/settings.dart';
+import '../../widgets/chat_pattern.dart';
 
 const _gradients = <List<Color>>[
   [Color(0xFFDCE8F5), Color(0xFFB7D3F0)],
@@ -57,7 +58,22 @@ class ChatBackground extends ConsumerWidget {
     } else {
       decoration = BoxDecoration(color: fallback);
     }
-    return DecoratedBox(decoration: decoration, child: child);
+    final pattern = ref.watch(settingsProvider.select((s) => s.wallpaperPattern)) && !wallpaper.startsWith('file:');
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return DecoratedBox(
+      decoration: decoration,
+      child: pattern
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                RepaintBoundary(
+                  child: CustomPaint(painter: ChatPatternPainter(color: dark ? Colors.white.withValues(alpha: 0.035) : Colors.black.withValues(alpha: 0.055))),
+                ),
+                child,
+              ],
+            )
+          : child,
+    );
   }
 }
 
@@ -135,7 +151,13 @@ class WallpaperScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(s.t('wallpaper_pattern')),
+            value: ref.watch(settingsProvider.select((st) => st.wallpaperPattern)),
+            onChanged: notifier.setWallpaperPattern,
+          ),
+          const SizedBox(height: 8),
           GridView.count(
             crossAxisCount: 3,
             shrinkWrap: true,
