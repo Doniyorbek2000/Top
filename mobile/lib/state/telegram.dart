@@ -101,6 +101,7 @@ class TelegramAccount {
   StreamSubscription<td.TdObject>? _subscription;
   final Map<int, Timer> _actionTimers = {};
   bool _listDirty = false;
+  bool _disposed = false;
   bool _usersDirty = false;
   final Set<int> _dirtyChats = {};
   TelegramCredentials? _credentials;
@@ -460,11 +461,14 @@ class TelegramAccount {
     if (state is td.AuthorizationStateWaitTdlibParameters) {
       final credentials = _credentials!;
       try {
+        final databaseKey = await _databaseKey();
+        // The account may have been disposed (log out, account removed, test teardown) while the key loaded.
+        if (_disposed) return;
         await client.send<td.Ok>(td.SetTdlibParameters(
           useTestDc: AppConfig.useTestDc,
           databaseDirectory: databaseDirectory,
           filesDirectory: '$databaseDirectory${Platform.pathSeparator}files',
-          databaseEncryptionKey: await _databaseKey(),
+          databaseEncryptionKey: databaseKey,
           useFileDatabase: true,
           useChatInfoDatabase: true,
           useMessageDatabase: true,
@@ -478,6 +482,9 @@ class TelegramAccount {
         ));
       } on TdException catch (error) {
         debugPrint('setTdlibParameters failed: $error');
+      } on FileSystemException catch (error) {
+        // Without the key the encrypted database cannot be opened; TDLib stays waiting for parameters.
+        if (!_disposed) debugPrint('database key unavailable: ${error.message}');
       }
     } else if (state is td.AuthorizationStateReady) {
       unawaited(_afterLogin());
@@ -594,6 +601,7 @@ class TelegramAccount {
   Future<void> logOut() => client.send<td.Ok>(const td.LogOut());
 
   Future<void> dispose() async {
+    _disposed = true;
     try {
       if (!client.isClosed) await client.send<td.Ok>(const td.Close()).timeout(const Duration(seconds: 5));
     } on Object catch (error) {
