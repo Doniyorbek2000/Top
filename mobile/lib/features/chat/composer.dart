@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +13,8 @@ import 'package:record/record.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 
 import '../../core/formatters.dart';
+import '../../core/live_location.dart';
+import '../../core/tdlib/td_client.dart';
 import '../../l10n/strings.dart';
 import '../../state/actions.dart';
 import '../../state/providers.dart';
@@ -21,6 +22,7 @@ import '../../state/settings.dart';
 import '../../state/telegram.dart';
 import '../../widgets/common.dart';
 import '../contacts/contacts_screen.dart';
+import 'composer_panels.dart';
 
 class Composer extends ConsumerStatefulWidget {
   const Composer({
@@ -54,6 +56,14 @@ class ComposerState extends ConsumerState<Composer> {
   DateTime _lastTyping = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _draftTimer;
 
+  // Suggestions above the input: "@mention" members and "@bot query" inline results.
+  List<td.ChatMember> _mentions = const [];
+  td.User? _inlineBot;
+  td.InlineQueryResults? _inlineResults;
+  String _inlineQuery = '';
+  Timer? _suggestTimer;
+  int _suggestGeneration = 0;
+
   // Voice recording state.
   bool _recording = false;
   DateTime? _recordStart;
@@ -84,7 +94,9 @@ class ComposerState extends ConsumerState<Composer> {
     super.didUpdateWidget(oldWidget);
     final old = oldWidget;
     if (widget.editing != null && widget.editing!.id != old.editing?.id) {
-      _controller.text = messageText(widget.editing!);
+      final content = widget.editing!.content;
+      final formatted = content is td.MessageText ? content.text : captionOf(content);
+      _controller.text = formatted == null ? '' : toMarkdown(formatted);
       _focus.requestFocus();
     } else if (widget.editing == null && old.editing != null) {
       _controller.clear();
@@ -95,6 +107,7 @@ class ComposerState extends ConsumerState<Composer> {
   @override
   void dispose() {
     _draftTimer?.cancel();
+    _suggestTimer?.cancel();
     if (widget.editing == null) {
       unawaited(_account.saveDraft(widget.chat.id, _controller.text, replyToMessageId: widget.replyTo?.id));
     }
@@ -127,6 +140,180 @@ class ComposerState extends ConsumerState<Composer> {
         if (mounted) unawaited(account.saveDraft(widget.chat.id, _controller.text, replyToMessageId: widget.replyTo?.id));
       });
     }
+      _scheduleSuggestions();
+  }
+
+  static final _inlinePattern = RegExp(r'^@([A-Za-z0-9_]{3,32}) (.*)$', dotAll: true);
+  static final _mentionPattern = RegExp(r'(?:^|\s)@([A-Za-z0-9_]*)$');
+
+  void _scheduleSuggestions() {
+    _suggestTimer?.cancel();
+    final text = _controller.text;
+    final inline = _inlinePattern.firstMatch(text);
+    final cursor = _controller.selection.baseOffset;
+    final beforeCursor = cursor >= 0 && cursor <= text.length ? text.substring(0, cursor) : text;
+    final mention = inline == null ? _mentionPattern.firstMatch(beforeCursor) : null;
+    if (inline == null && mention == null) {
+      if (_mentions.isNotEmpty || _inlineResults != null || _inlineBot != null) {
+        setState(() {
+          _mentions = const [];
+          _inlineResults = null;
+          _inlineBot = null;
+        });
+      }
+      return;
+    }
+    final generation = ++_suggestGeneration;
+    _suggestTimer = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        if (inline != null) {
+          await _loadInline(inline.group(1)!, inline.group(2)!, generation);
+        } else if (_account.isGroup(widget.chat)) {
+          final members = await _account.mentionCandidates(widget.chat.id, mention!.group(1)!);
+          if (mounted && generation == _suggestGeneration) setState(() => _mentions = members);
+        }
+      } on TdException catch (error) {
+        debugPrint('suggestions failed: $error');
+      }
+    });
+  }
+
+  Future<void> _loadInline(String username, String query, int generation) async {
+    var bot = _inlineBot;
+    if (bot == null || bot.usernames?.activeUsernames.contains(username) != true) {
+      bot = await _account.inlineBot(username);
+    }
+    if (!mounted || generation != _suggestGeneration) return;
+    if (bot == null) {
+      setState(() {
+        _inlineBot = null;
+        _inlineResults = null;
+      });
+      return;
+    }
+    final results = await _account.inlineResults(bot.id, widget.chat.id, query);
+    if (!mounted || generation != _suggestGeneration) return;
+    setState(() {
+      _inlineBot = bot;
+      _inlineQuery = query;
+      _inlineResults = results;
+      _mentions = const [];
+    });
+  }
+
+  Future<void> _loadMoreInline() async {
+    final bot = _inlineBot;
+    final current = _inlineResults;
+    if (bot == null || current == null || current.nextOffset.isEmpty) return;
+    final offset = current.nextOffset;
+    try {
+      final more = await _account.inlineResults(bot.id, widget.chat.id, _inlineQuery, offset: offset);
+      if (!mounted || _inlineResults?.nextOffset != offset) return;
+      setState(() => _inlineResults = more.copyWith(results: [...current.results, ...more.results]));
+    } on TdException catch (error) {
+      debugPrint('inline more failed: $error');
+    }
+  }
+
+  void _pickMention(td.User user) {
+    final text = _controller.text;
+    final cursor = _controller.selection.baseOffset.clamp(0, text.length);
+    final before = text.substring(0, cursor);
+    final at = before.lastIndexOf('@');
+    if (at < 0) return;
+    final username = user.usernames?.activeUsernames.firstOrNull;
+    // Users without a username are mentioned by name via a tg://user link (a MentionName entity on send).
+    final insert = username != null ? '@$username ' : '[${user.firstName}](tg://user?id=${user.id}) ';
+    final next = text.substring(0, at) + insert + text.substring(cursor);
+    _controller.value = TextEditingValue(text: next, selection: TextSelection.collapsed(offset: at + insert.length));
+    setState(() => _mentions = const []);
+  }
+
+  Future<void> _sendInlineResult(int queryId, String resultId) async {
+    final replyId = widget.replyTo?.id;
+    _controller.clear();
+    widget.onCancelReply();
+    widget.onSent();
+    setState(() {
+      _inlineResults = null;
+      _inlineBot = null;
+    });
+    await guard(context, () => _account.sendInlineResult(widget.chat.id, queryId, resultId, replyToId: replyId));
+  }
+
+  Future<void> _sendSticker(td.Sticker sticker) async {
+    final replyId = widget.replyTo?.id;
+    widget.onCancelReply();
+    widget.onSent();
+    await guard(context, () => _account.sendSticker(widget.chat.id, sticker, replyToId: replyId));
+  }
+
+  Future<void> _sendAnimation(td.Animation animation) async {
+    final replyId = widget.replyTo?.id;
+    widget.onCancelReply();
+    widget.onSent();
+    await guard(context, () => _account.sendAnimation(widget.chat.id, animation, replyToId: replyId));
+  }
+
+  /// Wraps the selection in Telegram markdown markers (parsed into entities on send).
+  void _wrapSelection(String left, [String? right]) {
+    final value = _controller.value;
+    final selection = value.selection;
+    if (!selection.isValid || selection.isCollapsed) return;
+    final replacement = '$left${selection.textInside(value.text)}${right ?? left}';
+    _controller.value = TextEditingValue(
+      text: selection.textBefore(value.text) + replacement + selection.textAfter(value.text),
+      selection: TextSelection.collapsed(offset: selection.start + replacement.length),
+    );
+  }
+
+  Future<void> _insertLink() async {
+    final selection = _controller.selection;
+    if (!selection.isValid || selection.isCollapsed) return;
+    final urlController = TextEditingController(text: 'https://');
+    final s = context.s;
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(s.t('format_link')),
+        content: TextField(controller: urlController, autofocus: true, keyboardType: TextInputType.url),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('cancel'))),
+          TextButton(onPressed: () => Navigator.pop(context, urlController.text.trim()), child: Text(s.t('ok'))),
+        ],
+      ),
+    );
+    urlController.dispose();
+    final uri = url == null ? null : Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || !mounted) return;
+    _controller.selection = selection;
+    _wrapSelection('[', ']($url)');
+  }
+
+  Widget _contextMenu(BuildContext context, EditableTextState state) {
+    final s = context.s;
+    final hasSelection = !state.textEditingValue.selection.isCollapsed;
+    ContextMenuButtonItem format(String key, VoidCallback apply) => ContextMenuButtonItem(
+          label: s.t(key),
+          onPressed: () {
+            ContextMenuController.removeAny();
+            apply();
+          },
+        );
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: state.contextMenuAnchors,
+      buttonItems: [
+        ...state.contextMenuButtonItems,
+        if (hasSelection) ...[
+          format('format_bold', () => _wrapSelection('**')),
+          format('format_italic', () => _wrapSelection('__')),
+          format('format_strike', () => _wrapSelection('~~')),
+          format('format_spoiler', () => _wrapSelection('||')),
+          format('format_code', () => _wrapSelection('`')),
+          format('format_link', () => unawaited(_insertLink())),
+        ],
+      ],
+    );
   }
 
   Future<void> _send({bool silent = false, int? scheduleAt}) async {
@@ -230,12 +417,15 @@ class ComposerState extends ConsumerState<Composer> {
     switch (choice) {
       case 'gallery':
         final files = await picker.pickMultipleMedia(imageQuality: 90);
-        for (final file in files) {
-          final isVideo = _isVideoPath(file.path);
+        // Several photos/videos go out as albums of up to 10, like Telegram.
+        for (var start = 0; start < files.length; start += 10) {
+          final batch = files.sublist(start, min(files.length, start + 10));
           if (!mounted) return;
-          await guard(context, () => isVideo
-              ? account.sendVideo(chatId, file.path, replyToId: replyId)
-              : account.sendPhoto(chatId, file.path, replyToId: replyId));
+          await guard(context, () => account.sendAlbum(
+                chatId,
+                [for (final file in batch) _isVideoPath(file.path) ? videoContent(file.path) : photoContent(file.path)],
+                replyToId: start == 0 ? replyId : null,
+              ));
         }
       case 'camera':
         final file = await picker.pickImage(source: ImageSource.camera, imageQuality: 90);
@@ -271,6 +461,31 @@ class ComposerState extends ConsumerState<Composer> {
   }
 
   Future<void> _sendLocation() async {
+    final s = context.s;
+    final choice = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(leading: const Icon(Icons.my_location_rounded), title: Text(s.t('send_current_location')), onTap: () => Navigator.pop(context, 0)),
+            for (final minutes in const [15, 60, 480])
+              ListTile(
+                leading: const Icon(Icons.share_location_rounded),
+                title: Text(s.t('share_live_location', {'time': minutes < 60 ? '$minutes min' : '${minutes ~/ 60} h'})),
+                onTap: () => Navigator.pop(context, minutes),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice > 0) {
+      final ok = await guard(context, () => LiveLocationService.instance.start(_account, widget.chat.id, Duration(minutes: choice)));
+      if (ok == false && mounted) showToast(context, s.t('location_permission'));
+      return;
+    }
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
     if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
@@ -425,6 +640,10 @@ class ComposerState extends ConsumerState<Composer> {
           onTap: () => guard(context, () => account.setMuted(chat, muted ? 0 : muteForever)),
         );
       }
+      if (chat.type is td.ChatTypeSecret) {
+        final state = account.secretChatOf(chat)?.state;
+        return _BottomAction(label: s.t(state is td.SecretChatStateClosed ? 'secret_closed' : 'secret_pending'), onTap: null);
+      }
       final user = account.privateUser(chat);
       if (user != null && chat.blockList != null) {
         return _BottomAction(
@@ -445,6 +664,14 @@ class ComposerState extends ConsumerState<Composer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_inlineResults != null)
+              InlineResultsPanel(
+                results: _inlineResults!,
+                onPick: (id) => _sendInlineResult(_inlineResults!.inlineQueryId, id),
+                onLoadMore: _loadMoreInline,
+              )
+            else if (_mentions.isNotEmpty)
+              MentionSuggestions(members: _mentions, onPick: _pickMention),
             if (reference != null)
               _ReferenceBar(
                 message: reference,
@@ -456,22 +683,12 @@ class ComposerState extends ConsumerState<Composer> {
               child: _recording ? _recordingRow(s) : _inputRow(s, settings),
             ),
             if (_showEmoji)
-              SizedBox(
-                height: 280,
-                child: EmojiPicker(
-                  textEditingController: _controller,
-                  config: Config(
-                    height: 280,
-                    emojiViewConfig: EmojiViewConfig(backgroundColor: theme.colorScheme.surface, emojiSizeMax: 30),
-                    categoryViewConfig: CategoryViewConfig(
-                      backgroundColor: theme.colorScheme.surface,
-                      indicatorColor: theme.colorScheme.primary,
-                      iconColorSelected: theme.colorScheme.primary,
-                    ),
-                    bottomActionBarConfig: const BottomActionBarConfig(enabled: false),
-                    searchViewConfig: SearchViewConfig(backgroundColor: theme.colorScheme.surface),
-                  ),
-                ),
+              MediaPanel(
+                controller: _controller,
+                chatId: widget.chat.id,
+                onSticker: _sendSticker,
+                onAnimation: _sendAnimation,
+                onInlineResult: _sendInlineResult,
               ),
           ],
         ),
@@ -506,8 +723,13 @@ class ComposerState extends ConsumerState<Composer> {
             textInputAction: settings.sendByEnter ? TextInputAction.send : TextInputAction.newline,
             onSubmitted: settings.sendByEnter ? (_) => _send() : null,
             style: TextStyle(fontSize: 16 * settings.textScale),
+            contextMenuBuilder: _contextMenu,
             decoration: InputDecoration(
-              hintText: s.t('message_hint'),
+              hintText: switch (_inlineBot?.type) {
+                td.UserTypeBot(:final inlineQueryPlaceholder) when _inlineQuery.isEmpty && inlineQueryPlaceholder.isNotEmpty =>
+                  inlineQueryPlaceholder,
+                _ => s.t('message_hint'),
+              },
               border: InputBorder.none,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 12),

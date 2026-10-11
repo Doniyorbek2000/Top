@@ -28,6 +28,11 @@ class AppSettings {
     this.bubbleRadius = 18,
     this.showTranslateButton = true,
     this.chatTypeTabs = false,
+    this.keepMediaDays = 0,
+    this.autoDownloadPhotos = true,
+    this.autoplayGifs = true,
+    this.hiddenChatIds = const {},
+    this.wallpaper = '',
   });
 
   final ThemeMode themeMode;
@@ -48,6 +53,17 @@ class AppSettings {
   /// Extra tabs filtering chats by type (users, groups, channels, bots, unread).
   final bool chatTypeTabs;
 
+  /// Cached media not opened for this many days is deleted (0 = keep forever).
+  final int keepMediaDays;
+  final bool autoDownloadPhotos;
+  final bool autoplayGifs;
+
+  /// Chats hidden from the chat lists (shown only in the passcode-protected "Hidden chats" screen).
+  final Set<int> hiddenChatIds;
+
+  /// Chat background: '' default, 'color:AARRGGBB', 'gradient:N' or 'file:/path'.
+  final String wallpaper;
+
   Color get accent => accentPalette[accentIndex.clamp(0, accentPalette.length - 1)];
 
   AppSettings copyWith({
@@ -64,6 +80,11 @@ class AppSettings {
     double? bubbleRadius,
     bool? showTranslateButton,
     bool? chatTypeTabs,
+    int? keepMediaDays,
+    bool? autoDownloadPhotos,
+    bool? autoplayGifs,
+    Set<int>? hiddenChatIds,
+    String? wallpaper,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -79,6 +100,11 @@ class AppSettings {
         bubbleRadius: bubbleRadius ?? this.bubbleRadius,
         showTranslateButton: showTranslateButton ?? this.showTranslateButton,
         chatTypeTabs: chatTypeTabs ?? this.chatTypeTabs,
+        keepMediaDays: keepMediaDays ?? this.keepMediaDays,
+        autoDownloadPhotos: autoDownloadPhotos ?? this.autoDownloadPhotos,
+        autoplayGifs: autoplayGifs ?? this.autoplayGifs,
+        hiddenChatIds: hiddenChatIds ?? this.hiddenChatIds,
+        wallpaper: wallpaper ?? this.wallpaper,
       );
 }
 
@@ -106,6 +132,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
       bubbleRadius: _prefs.getDouble('bubbleRadius') ?? 18,
       showTranslateButton: _prefs.getBool('showTranslateButton') ?? true,
       chatTypeTabs: _prefs.getBool('chatTypeTabs') ?? false,
+      keepMediaDays: _prefs.getInt('keepMediaDays') ?? 0,
+      autoDownloadPhotos: _prefs.getBool('autoDownloadPhotos') ?? true,
+      autoplayGifs: _prefs.getBool('autoplayGifs') ?? true,
+      hiddenChatIds: {for (final id in _prefs.getStringList('hiddenChats') ?? const <String>[]) ?int.tryParse(id)},
+      wallpaper: _prefs.getString('wallpaper') ?? '',
     );
   }
 
@@ -167,6 +198,33 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setBubbleRadius(double value) {
     _prefs.setDouble('bubbleRadius', value);
     state = state.copyWith(bubbleRadius: value);
+  }
+
+  void setKeepMediaDays(int days) {
+    _prefs.setInt('keepMediaDays', days);
+    state = state.copyWith(keepMediaDays: days);
+  }
+
+  void setAutoDownloadPhotos(bool value) {
+    _prefs.setBool('autoDownloadPhotos', value);
+    state = state.copyWith(autoDownloadPhotos: value);
+  }
+
+  void setAutoplayGifs(bool value) {
+    _prefs.setBool('autoplayGifs', value);
+    state = state.copyWith(autoplayGifs: value);
+  }
+
+  void setHidden(int chatId, bool hidden) {
+    final next = {...state.hiddenChatIds};
+    hidden ? next.add(chatId) : next.remove(chatId);
+    _prefs.setStringList('hiddenChats', [for (final id in next) '$id']);
+    state = state.copyWith(hiddenChatIds: next);
+  }
+
+  void setWallpaper(String value) {
+    _prefs.setString('wallpaper', value);
+    state = state.copyWith(wallpaper: value);
   }
 
   void setChatTypeTabs(bool value) {

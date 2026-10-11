@@ -66,6 +66,11 @@ class TelegramAccount {
     return feed;
   }
 
+  final Map<int, td.SecretChat> secretChats = {};
+
+  td.SecretChat? secretChatOf(td.Chat chat) =>
+      chat.type is td.ChatTypeSecret ? secretChats[(chat.type as td.ChatTypeSecret).secretChatId] : null;
+
   /// Forum topic currently open per chat; messages sent to that chat go into the topic.
   final Map<int, int> activeTopics = {};
 
@@ -211,6 +216,7 @@ class TelegramAccount {
 
   bool canSendMessages(td.Chat chat) {
     if (!isMember(chat)) return false;
+    if (chat.type is td.ChatTypeSecret) return secretChatOf(chat)?.state is td.SecretChatStateReady;
     final user = privateUser(chat);
     if (user != null) return user.type is! td.UserTypeDeleted;
     if (isChannel(chat)) {
@@ -388,6 +394,12 @@ class TelegramAccount {
           users[userId] = user.copyWith(status: status);
           _markUsers();
           _markList();
+        }
+      case td.UpdateSecretChat(:final secretChat):
+        secretChats[secretChat.id] = secretChat;
+        _markList();
+        for (final chat in chats.values) {
+          if (chat.type case td.ChatTypeSecret(:final secretChatId) when secretChatId == secretChat.id) _markChat(chat.id);
         }
       case td.UpdateBasicGroup(:final basicGroup):
         basicGroups[basicGroup.id] = basicGroup;

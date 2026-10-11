@@ -168,10 +168,16 @@ bool _matchesType(TelegramAccount account, td.Chat chat, String type) => switch 
 final chatListProvider = Provider.family<List<td.Chat>, String>((ref, listKey) {
   final account = ref.watch(accountProvider);
   watchListenable(ref, account.chatListRevision);
-  if (listKey.startsWith('type:')) {
-    return account.chatList(const td.ChatListMain()).where((c) => _matchesType(account, c, listKey)).toList();
+  final hidden = ref.watch(settingsProvider.select((s) => s.hiddenChatIds));
+  if (listKey == 'hidden') {
+    return [...account.chatList(const td.ChatListMain()), ...account.chatList(const td.ChatListArchive())]
+        .where((c) => hidden.contains(c.id))
+        .toList();
   }
-  return account.chatList(chatListFromKey(listKey));
+  final chats = listKey.startsWith('type:')
+      ? account.chatList(const td.ChatListMain()).where((c) => _matchesType(account, c, listKey))
+      : account.chatList(chatListFromKey(listKey));
+  return hidden.isEmpty ? chats.toList() : chats.where((c) => !hidden.contains(c.id)).toList();
 });
 
 final chatProvider = Provider.family<td.Chat?, int>((ref, chatId) {
@@ -236,4 +242,11 @@ final storyFeedProvider = Provider<List<td.ChatActiveStories>>((ref) {
   final account = ref.watch(accountProvider);
   watchListenable(ref, account.storiesRevision);
   return account.storyFeed();
+});
+
+/// File state without starting a download (for media the user chose not to auto-download).
+final fileStateProvider = StreamProvider.autoDispose.family<td.File?, int>((ref, fileId) async* {
+  final account = ref.watch(accountProvider);
+  yield account.files[fileId];
+  yield* account.fileUpdates(fileId);
 });

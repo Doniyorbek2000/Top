@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 
+import '../../core/app_lock.dart';
 import '../../core/formatters.dart';
 import '../../core/tdlib/td_client.dart';
 import '../../l10n/strings.dart';
@@ -15,17 +16,28 @@ import '../chat/topics_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../search/search_screen.dart';
 import '../stories/stories.dart';
+import '../settings/downloads_screen.dart';
 import '../settings/settings_screen.dart';
 import 'chat_tile.dart';
+
+/// Right-hand pane of the tablet split view; null on phones.
+final chatPaneNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Width from which the chat list and the open chat are shown side by side.
+const splitViewMinWidth = 840.0;
 
 void openChat(BuildContext context, int chatId, {int? messageId}) {
   final account = ProviderScope.containerOf(context, listen: false).read(accountProvider);
   final chat = account.chats[chatId];
-  if (messageId == null && chat != null && account.isForum(chat)) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TopicsScreen(chatId: chatId)));
+  final Widget screen = messageId == null && chat != null && account.isForum(chat)
+      ? TopicsScreen(chatId: chatId)
+      : ChatScreen(key: ValueKey('chat_${chatId}_$messageId'), chatId: chatId, initialMessageId: messageId);
+  final pane = chatPaneNavigatorKey.currentState;
+  if (pane != null && MediaQuery.sizeOf(context).width >= splitViewMinWidth) {
+    pane.pushAndRemoveUntil(MaterialPageRoute<void>(builder: (_) => screen), (route) => route.isFirst);
     return;
   }
-  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChatScreen(chatId: chatId, initialMessageId: messageId)));
+  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
 }
 
 class HomeScreen extends ConsumerWidget {
@@ -41,7 +53,7 @@ class HomeScreen extends ConsumerWidget {
         for (final type in chatTypeTabs) (type, s.t('tab_${type.substring(5)}')),
       for (final folder in folders) ('folder:${folder.id}', folder.name.text.text),
     ];
-    return DefaultTabController(
+    final list = DefaultTabController(
       key: ValueKey(tabs.map((t) => t.$1).join(',')),
       length: tabs.length,
       child: Scaffold(
@@ -77,7 +89,38 @@ class HomeScreen extends ConsumerWidget {
         ),
       ),
     );
+    if (MediaQuery.sizeOf(context).width < splitViewMinWidth) return list;
+    return Row(
+      children: [
+        SizedBox(width: 380, child: list),
+        const VerticalDivider(width: 1),
+        Expanded(
+          child: Navigator(
+            key: chatPaneNavigatorKey,
+            onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (_) => const _EmptyChatPane()),
+          ),
+        ),
+      ],
+    );
   }
+}
+
+class _EmptyChatPane extends StatelessWidget {
+  const _EmptyChatPane();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/logo.png', width: 96, height: 96),
+              const SizedBox(height: 16),
+              Text(context.t('select_chat'), style: TextStyle(color: Theme.of(context).hintColor, fontSize: 16)),
+            ],
+          ),
+        ),
+      );
 }
 
 class _FolderTabLabel extends ConsumerWidget {
@@ -384,6 +427,28 @@ class _HomeDrawerState extends ConsumerState<HomeDrawer> {
             title: Text(s.t('archive')),
             onTap: () => _push(const ArchiveScreen()),
           ),
+          ListTile(
+            leading: const Icon(Icons.download_rounded),
+            title: Text(s.t('downloads')),
+            onTap: () => _push(const DownloadsScreen()),
+          ),
+          if (settings.hiddenChatIds.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined),
+              title: Text(s.t('hidden_chats')),
+              onTap: () async {
+                // Hidden chats sit behind the passcode when one is set.
+                if (ref.read(appLockProvider).enabled) {
+                  final pin = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const PinEntryScreen(titleKey: 'passcode_enter')));
+                  if (pin == null || !context.mounted) return;
+                  if (!await ref.read(appLockProvider.notifier).verify(pin)) {
+                    if (context.mounted) showToast(context, s.t('passcode_wrong'));
+                    return;
+                  }
+                }
+                _push(const HiddenChatsScreen());
+              },
+            ),
           SwitchListTile(
             secondary: const Icon(Icons.visibility_off_rounded),
             title: Text(s.t('ghost_mode')),
@@ -403,4 +468,14 @@ class _HomeDrawerState extends ConsumerState<HomeDrawer> {
       ),
     );
   }
+}
+
+class HiddenChatsScreen extends ConsumerWidget {
+  const HiddenChatsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+        appBar: AppBar(title: Text(context.t('hidden_chats'))),
+        body: const ChatListView(listKey: 'hidden'),
+      );
 }

@@ -8,7 +8,6 @@ import 'package:tdlib_ex/td_api.dart' as td;
 
 import '../../core/formatters.dart';
 import '../../core/tdlib/td_client.dart';
-import '../../core/theme.dart';
 import '../../l10n/strings.dart';
 import '../../state/actions.dart';
 import '../../state/chat_history.dart';
@@ -18,9 +17,11 @@ import '../../state/telegram.dart';
 import '../../widgets/common.dart';
 import '../home/home_screen.dart';
 import '../profile/chat_info_screen.dart';
+import '../settings/wallpaper.dart';
 import 'bot_keyboard.dart';
 import 'composer.dart';
 import 'forward_picker.dart';
+import 'media_viewers.dart';
 import 'message_bubble.dart';
 import 'message_content.dart';
 import 'scheduled_screen.dart';
@@ -236,6 +237,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (props?.canBeForwarded ?? true) _menuItem(context, Icons.forward_rounded, s.t('forward'), 'forward'),
               if (props?.canGetLink ?? false) _menuItem(context, Icons.link_rounded, s.t('copy_link'), 'link'),
               if (text.isNotEmpty) _menuItem(context, Icons.share_rounded, s.t('share'), 'share'),
+              if (_isGalleryMedia(message) && (props?.canBeSaved ?? message.canBeSaved))
+                _menuItem(context, Icons.download_rounded, s.t('save_to_gallery'), 'save'),
+              if (message.content is td.MessageDocument || message.content is td.MessageAudio)
+                _menuItem(context, Icons.file_download_outlined, s.t('download'), 'download'),
               _menuItem(context, Icons.check_circle_outline_rounded, s.t('select'), 'select'),
               if ((props?.canBeDeletedOnlyForSelf ?? true) || (props?.canBeDeletedForAllUsers ?? false))
                 _menuItem(context, Icons.delete_rounded, s.t('delete'), 'delete', destructive: true),
@@ -304,7 +309,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         await guard(context, () => _account.setPinned(message, !message.isPinned));
         await _refreshPinned();
       case 'forward':
-        await _forward([message]);
+        await _forward(_albumOf(message));
       case 'link':
         final link = await guard(context, () => _account.messageLink(message));
         if (link != null) {
@@ -315,9 +320,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         await SharePlus.instance.share(ShareParams(text: messageText(message)));
       case 'select':
         _toggleSelected(message);
+      case 'save':
+        for (final item in _albumOf(message).where(_isGalleryMedia)) {
+          final file = mediaFileOf(item);
+          if (file == null || !mounted) continue;
+          await saveMediaToGallery(context, ref, file, isVideo: item.content is! td.MessagePhoto);
+        }
+      case 'download':
+        final file = mediaFileOf(message);
+        if (file != null) {
+          await guard(context, () => _account.addToDownloads(message, file.id, priority: 32));
+          if (mounted) showToast(context, s.t('download_started'));
+        }
       case 'delete':
-        await _delete([message], canRevoke: props?.canBeDeletedForAllUsers ?? false, onlySelf: props?.canBeDeletedOnlyForSelf ?? true);
+        await _delete(_albumOf(message), canRevoke: props?.canBeDeletedForAllUsers ?? false, onlySelf: props?.canBeDeletedOnlyForSelf ?? true);
     }
+  }
+
+  static bool _isGalleryMedia(td.Message m) =>
+      m.content is td.MessagePhoto || m.content is td.MessageVideo || m.content is td.MessageAnimation || m.content is td.MessageVideoNote;
+
+  /// The message plus the rest of its media album, oldest first.
+  List<td.Message> _albumOf(td.Message message) {
+    if (message.mediaAlbumId == 0) return [message];
+    return _history.messages.where((m) => m.mediaAlbumId == message.mediaAlbumId).toList()..sort((a, b) => a.id.compareTo(b.id));
   }
 
   Future<void> _forward(List<td.Message> messages) async {
@@ -402,8 +428,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             if (_pinned != null) _PinnedBar(message: _pinned!, onTap: () => _jumpTo(_pinned!.id), onClose: () => setState(() => _pinned = null)),
             Expanded(
-              child: Container(
-                color: context.chatColors.chatBackground,
+              child: ChatBackground(
                 child: Stack(
                   children: [
                     _messageList(chat),
@@ -594,7 +619,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
         }
         final message = messages[index];
-        final older = index + 1 < messages.length ? messages[index + 1] : null;
+        // Media albums: the newest message of the run draws the whole grid, the others collapse.
+        final albumId = message.mediaAlbumId;
+        List<td.Message>? album;
+        var olderIndex = index + 1;
+        if (albumId != 0) {
+          if (index > 0 && messages[index - 1].mediaAlbumId == albumId) return SizedBox.shrink(key: ValueKey('album_${message.id}'));
+          var end = index;
+          while (end + 1 < messages.length && messages[end + 1].mediaAlbumId == albumId) {
+            end++;
+          }
+          if (end > index) {
+            album = messages.sublist(index, end + 1).reversed.toList();
+            olderIndex = end + 1;
+            if (!message.isOutgoing) _history.markViewed(album.map((m) => m.id));
+          }
+        }
+        final older = olderIndex < messages.length ? messages[olderIndex] : null;
         final newer = index > 0 ? messages[index - 1] : null;
         if (!message.isOutgoing) _history.markViewed([message.id]);
         final newDay = older == null || !isSameDay(older.date, message.date);
@@ -620,6 +661,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onLongPress: () => _selected.isNotEmpty ? _toggleSelected(message) : _showMessageMenu(message),
             onReplyTap: _jumpTo,
             onInsertText: _insertText,
+            album: album,
           );
         }
         return Column(

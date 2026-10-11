@@ -9,6 +9,7 @@ import 'package:tdlib_ex/td_api.dart' as td;
 import 'package:video_player/video_player.dart';
 
 import '../../core/formatters.dart';
+import '../../core/media_saver.dart';
 import '../../l10n/strings.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
@@ -20,6 +21,18 @@ void openPhotoViewer(BuildContext context, td.File file, td.Minithumbnail? minit
     pageBuilder: (_, _, _) => _PhotoViewerScreen(file: file, minithumbnail: minithumbnail),
     transitionsBuilder: (_, animation, _, child) => FadeTransition(opacity: animation, child: child),
   ));
+}
+
+/// Saves a photo/video to the gallery and reports the outcome.
+Future<void> saveMediaToGallery(BuildContext context, WidgetRef ref, td.File file, {required bool isVideo}) async {
+  final s = context.s;
+  final result = await saveToGallery(ref.read(accountProvider), file, isVideo: isVideo);
+  if (!context.mounted) return;
+  showToast(context, s.t(switch (result) {
+    SaveResult.saved => 'saved_to_gallery',
+    SaveResult.denied => 'gallery_permission',
+    SaveResult.failed => 'save_failed',
+  }));
 }
 
 void openVideoPlayer(BuildContext context, td.File file, {bool loop = false}) {
@@ -42,6 +55,12 @@ class _PhotoViewerScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.black38,
         actions: [
+          if (ready)
+            IconButton(
+              tooltip: context.t('save_to_gallery'),
+              icon: const Icon(Icons.download_rounded),
+              onPressed: () => saveMediaToGallery(context, ref, current, isVideo: false),
+            ),
           if (ready)
             IconButton(
               icon: const Icon(Icons.share_rounded),
@@ -134,6 +153,12 @@ class _VideoPlayerScreenState extends ConsumerState<_VideoPlayerScreen> {
                 setState(() {});
               },
               child: Text('${controller.value.playbackSpeed}x', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          if (current.local.isDownloadingCompleted)
+            IconButton(
+              tooltip: context.t('save_to_gallery'),
+              icon: const Icon(Icons.download_rounded),
+              onPressed: () => saveMediaToGallery(context, ref, current, isVideo: true),
             ),
           if (current.local.isDownloadingCompleted)
             IconButton(

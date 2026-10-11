@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../l10n/strings.dart';
 import '../../state/actions.dart';
 import '../../state/providers.dart';
+import '../../state/settings.dart';
 import '../../state/telegram.dart';
 import '../../widgets/common.dart';
 
@@ -203,6 +204,7 @@ Future<void> showChatActions(BuildContext context, WidgetRef ref, td.Chat chat, 
   final archived = account.isArchived(chat);
   final unread = chat.unreadCount > 0 || chat.isMarkedAsUnread;
   final isPrivate = account.privateUser(chat) != null;
+  final hidden = ref.read(settingsProvider).hiddenChatIds.contains(chat.id);
   final action = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -224,6 +226,11 @@ Future<void> showChatActions(BuildContext context, WidgetRef ref, td.Chat chat, 
             leading: Icon(archived ? Icons.unarchive_rounded : Icons.archive_rounded),
             title: Text(s.t(archived ? 'unarchive' : 'archive')),
             onTap: () => Navigator.pop(context, 'archive'),
+          ),
+          ListTile(
+            leading: Icon(hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded),
+            title: Text(s.t(hidden ? 'unhide_chat' : 'hide_chat')),
+            onTap: () => Navigator.pop(context, 'hide'),
           ),
           ListTile(
             leading: Icon(unread ? Icons.mark_chat_read_rounded : Icons.mark_chat_unread_rounded),
@@ -252,6 +259,9 @@ Future<void> showChatActions(BuildContext context, WidgetRef ref, td.Chat chat, 
       await guard(context, () => account.setArchived(chat, !archived));
     case 'read':
       await guard(context, () => unread ? account.markRead(chat) : account.markUnread(chat));
+    case 'hide':
+      ref.read(settingsProvider.notifier).setHidden(chat.id, !hidden);
+      showToast(context, s.t(hidden ? 'chat_unhidden' : 'chat_hidden'));
     case 'delete':
       final ok = await confirm(
         context,

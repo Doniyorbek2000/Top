@@ -163,7 +163,7 @@ String messagePreview(td.Message message, TelegramAccount account, Strings s) {
       return emoji;
     case td.MessageDice(:final emoji):
       return emoji;
-    case td.MessageLocation():
+    case td.MessageLocation() || td.MessageLiveLocation():
       return '📍 ${s.t('location')}';
     case td.MessageVenue(:final venue):
       return '📍 ${venue.title}';

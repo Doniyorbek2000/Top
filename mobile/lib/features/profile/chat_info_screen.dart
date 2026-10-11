@@ -16,6 +16,7 @@ import '../chat/media_viewers.dart';
 import '../chat/message_content.dart';
 import '../contacts/contacts_screen.dart';
 import '../home/home_screen.dart';
+import 'admin_screens.dart';
 
 /// Extra info shown on profiles: bio/description, invite link, member list.
 class _ProfileDetails {
@@ -152,6 +153,12 @@ class ChatInfoScreen extends ConsumerWidget {
               value: !muted,
               onChanged: (on) => guard(context, () => account.setMuted(chat, on ? 0 : muteForever)),
             ),
+            if (user == null && account.isAdmin(chat))
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings_rounded),
+                title: Text(s.t('manage')),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ManageChatScreen(chatId: chatId))),
+              ),
             if (user != null && user.id != account.myId) ...[
               ListTile(
                 leading: const Icon(Icons.chat_rounded),
@@ -167,6 +174,19 @@ class ChatInfoScreen extends ConsumerWidget {
                         contact: td.ImportedContact(phoneNumber: user.phoneNumber, firstName: user.firstName, lastName: user.lastName, note: null),
                         sharePhoneNumber: false,
                       ))),
+                ),
+              if (chat.type is td.ChatTypePrivate && !account.isBot(user))
+                ListTile(
+                  leading: const Icon(Icons.lock_rounded),
+                  title: Text(s.t('start_secret_chat')),
+                  onTap: () async {
+                    final ok = await confirm(context, title: s.t('start_secret_chat'), message: s.t('secret_chat_confirm', {'name': user.firstName}));
+                    if (!ok || !context.mounted) return;
+                    final secret = await guard(context, () => account.createSecretChat(user.id));
+                    if (secret == null || !context.mounted) return;
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                    openChat(context, secret.id);
+                  },
                 ),
               ListTile(
                 leading: Icon(Icons.block_rounded, color: theme.colorScheme.error),

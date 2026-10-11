@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 
 import 'core/app_lock.dart';
+import 'core/live_location.dart';
 import 'core/notifications.dart';
 import 'core/push.dart';
 import 'core/theme.dart';
@@ -13,6 +14,7 @@ import 'features/auth/auth_screens.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/home/home_screen.dart';
 import 'l10n/strings.dart';
+import 'state/actions.dart';
 import 'state/providers.dart';
 import 'state/settings.dart';
 import 'state/telegram.dart';
@@ -130,9 +132,17 @@ class _SessionScopeState extends ConsumerState<_SessionScope> with WidgetsBindin
     unawaited(MessageNotifier.instance.initialize());
     _messages = _account.messageEvents.listen(_onMessageEvent);
     unawaited(PushService.instance.register(_account));
+    final keepDays = ref.read(settingsProvider).keepMediaDays;
+    if (keepDays > 0) {
+      unawaited(_account.clearCache(ttl: keepDays * 86400).catchError((Object error) => debugPrint('storage cleanup failed: $error')));
+    }
   }
 
   void _onMessageEvent(td.Update update) {
+    if (update is td.UpdateMessageSendSucceeded) {
+      LiveLocationService.instance.onMessageIdChanged(update.message.chatId, update.oldMessageId, update.message.id);
+      return;
+    }
     if (update is! td.UpdateNewMessage) return;
     final message = update.message;
     final settings = ref.read(settingsProvider);
@@ -147,7 +157,7 @@ class _SessionScopeState extends ConsumerState<_SessionScope> with WidgetsBindin
       message: message,
       strings: Strings(settings.localeCode),
       // While a passcode is set, notifications never show message text.
-      showPreview: settings.messagePreview && !ref.read(appLockProvider).enabled,
+      showPreview: settings.messagePreview && !ref.read(appLockProvider).enabled && !settings.hiddenChatIds.contains(message.chatId),
     ));
   }
 

@@ -54,7 +54,7 @@ void main() {
         'actor', 'users', 'title', 'n', 'name', 'time', 'date', 'email', 'phone', 'prefix', 'lang', 'hint', 'link',
         'main', 'fix', 'translate', 'emoji', 'summarize', 'clear', 'mute', 'delete', 'pin', 'retry', 'reply', 'copy',
         'edit', 'forward', 'share', 'select', 'gallery', 'camera', 'video', 'file', 'location', 'poll', 'contact', 'read',
-        'archive', 'count', 'domain', 'seconds', 'bot', 'now', 'scheduled', 'reschedule',
+        'archive', 'count', 'domain', 'seconds', 'bot', 'now', 'scheduled', 'reschedule', 'admins', 'dismiss', 'remove',
       };
       final missing = used.where((k) => !notKeys.contains(k) && !en.containsKey(k) && !en.containsKey('${k}_one')).toList()..sort();
       expect(missing, isEmpty);

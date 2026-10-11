@@ -304,9 +304,9 @@ class PasscodeSettingsScreen extends ConsumerWidget {
   const PasscodeSettingsScreen({super.key});
 
   Future<String?> _askNewPin(BuildContext context) async {
-    final first = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const _PinEntryScreen(titleKey: 'passcode_new')));
+    final first = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const PinEntryScreen(titleKey: 'passcode_new')));
     if (first == null || !context.mounted) return null;
-    final second = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const _PinEntryScreen(titleKey: 'passcode_repeat')));
+    final second = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const PinEntryScreen(titleKey: 'passcode_repeat')));
     if (second == null || !context.mounted) return null;
     if (first != second) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.t('passcode_mismatch'))));
@@ -316,7 +316,7 @@ class PasscodeSettingsScreen extends ConsumerWidget {
   }
 
   Future<bool> _checkCurrent(BuildContext context, WidgetRef ref) async {
-    final pin = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const _PinEntryScreen(titleKey: 'passcode_enter')));
+    final pin = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const PinEntryScreen(titleKey: 'passcode_enter')));
     if (pin == null) return false;
     final ok = await ref.read(appLockProvider.notifier).verify(pin);
     if (!ok && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.t('passcode_wrong'))));
@@ -386,16 +386,16 @@ class PasscodeSettingsScreen extends ConsumerWidget {
   }
 }
 
-class _PinEntryScreen extends StatefulWidget {
-  const _PinEntryScreen({required this.titleKey});
+class PinEntryScreen extends StatefulWidget {
+  const PinEntryScreen({super.key, required this.titleKey});
 
   final String titleKey;
 
   @override
-  State<_PinEntryScreen> createState() => _PinEntryScreenState();
+  State<PinEntryScreen> createState() => _PinEntryScreenState();
 }
 
-class _PinEntryScreenState extends State<_PinEntryScreen> {
+class _PinEntryScreenState extends State<PinEntryScreen> {
   String _pin = '';
 
   @override

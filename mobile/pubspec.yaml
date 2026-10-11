@@ -65,6 +65,8 @@ dependencies:
   crypto: ^3.0.7
   firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
+  gal: ^2.3.3
+  sentry_flutter: ^8.14.2
 
 dev_dependencies:
   flutter_test:

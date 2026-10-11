@@ -8,6 +8,22 @@ import 'telegram.dart';
 
 td.FormattedText plainText(String text) => td.FormattedText(text: text, entities: const []);
 
+/// Telegram's human-friendly markdown (**bold**, __italic__, ~~strike~~, ||spoiler||, `code`, ```pre```,
+/// [text](url), [name](tg://user?id=1)) parsed synchronously by TDLib; falls back to plain text.
+td.FormattedText formattedText(String text) {
+  if (!_hasMarkup.hasMatch(text)) return plainText(text);
+  try {
+    final result = TdClient.executeStatic(td.ParseMarkdown(text: plainText(text)));
+    final parsed = result?.toTdObject();
+    if (parsed is td.FormattedText) return parsed;
+  } on Object catch (_) {
+    // Malformed markup or TDLib unavailable: send the text as typed.
+  }
+  return plainText(text);
+}
+
+final _hasMarkup = RegExp(r'\*\*|__|~~|\|\||`|\[[^\]]+\]\(');
+
 const _noOptions = td.MessageSendOptions(
   suggestedPostInfo: null,
   disableNotification: false,
@@ -148,7 +164,7 @@ extension ChatActions on TelegramAccount {
       sendContent(
         chatId,
         td.InputMessageText(
-          text: plainText(text),
+          text: formattedText(text),
           linkPreviewOptions: disablePreview
               ? const td.LinkPreviewOptions(
                   isDisabled: true, url: '', forceSmallMedia: false, forceLargeMedia: false, showAboveText: false)
@@ -161,46 +177,10 @@ extension ChatActions on TelegramAccount {
       );
 
   Future<td.Message> sendPhoto(int chatId, String path, {String caption = '', int width = 0, int height = 0, int? replyToId}) =>
-      sendContent(
-        chatId,
-        td.InputMessagePhoto(
-          photo: td.InputPhoto(
-            photo: td.InputFileLocal(path: path),
-            thumbnail: null,
-            video: null,
-            addedStickerFileIds: const [],
-            width: width,
-            height: height,
-          ),
-          caption: plainText(caption),
-          showCaptionAboveMedia: false,
-          selfDestructType: null,
-          hasSpoiler: false,
-        ),
-        replyToId: replyToId,
-      );
+      sendContent(chatId, photoContent(path, caption: caption, width: width, height: height), replyToId: replyToId);
 
-  Future<td.Message> sendVideo(int chatId, String path, {String caption = '', int? replyToId}) => sendContent(
-        chatId,
-        td.InputMessageVideo(
-          video: td.InputVideo(
-            video: td.InputFileLocal(path: path),
-            thumbnail: null,
-            cover: null,
-            startTimestamp: 0,
-            addedStickerFileIds: const [],
-            duration: 0,
-            width: 0,
-            height: 0,
-            supportsStreaming: true,
-          ),
-          caption: plainText(caption),
-          showCaptionAboveMedia: false,
-          selfDestructType: null,
-          hasSpoiler: false,
-        ),
-        replyToId: replyToId,
-      );
+  Future<td.Message> sendVideo(int chatId, String path, {String caption = '', int? replyToId}) =>
+      sendContent(chatId, videoContent(path, caption: caption), replyToId: replyToId);
 
   Future<td.Message> sendDocument(int chatId, String path, {String caption = '', int? replyToId}) => sendContent(
         chatId,
@@ -210,7 +190,7 @@ extension ChatActions on TelegramAccount {
             thumbnail: null,
             disableContentTypeDetection: false,
           ),
-          caption: plainText(caption),
+          caption: formattedText(caption),
         ),
         replyToId: replyToId,
       );
@@ -281,14 +261,14 @@ extension ChatActions on TelegramAccount {
         chatId: message.chatId,
         messageId: message.id,
         replyMarkup: null,
-        inputMessageContent: td.InputMessageText(text: plainText(text), linkPreviewOptions: null, clearDraft: false),
+        inputMessageContent: td.InputMessageText(text: formattedText(text), linkPreviewOptions: null, clearDraft: false),
       ));
     }
     return send<td.Message>(td.EditMessageCaption(
       chatId: message.chatId,
       messageId: message.id,
       replyMarkup: null,
-      caption: plainText(text),
+      caption: formattedText(text),
       showCaptionAboveMedia: false,
     ));
   }
@@ -474,5 +454,438 @@ extension ScheduledActions on TelegramAccount {
         chatId: message.chatId,
         messageId: message.id,
         schedulingState: td.MessageSchedulingStateSendAtDate(sendDate: sendAt, repeatPeriod: 0),
+      ));
+}
+
+/// Composer helpers: mentions, inline bots, stickers and GIFs.
+extension ComposeActions on TelegramAccount {
+  Future<List<td.ChatMember>> mentionCandidates(int chatId, String query) async =>
+      (await send<td.ChatMembers>(td.SearchChatMembers(
+        chatId: chatId,
+        query: query,
+        limit: 20,
+        filter: td.ChatMembersFilterMention(topicId: topicFor(chatId)),
+      )))
+          .members;
+
+  /// Resolves "@username" to an inline bot, or null when it is not one.
+  Future<td.User?> inlineBot(String username) async {
+    try {
+      final chat = await send<td.Chat>(td.SearchPublicChat(username: username));
+      final user = privateUser(chat) ?? (chat.type is td.ChatTypePrivate ? await getUser((chat.type as td.ChatTypePrivate).userId) : null);
+      final type = user?.type;
+      return type is td.UserTypeBot && type.isInline ? user : null;
+    } on TdException {
+      return null;
+    }
+  }
+
+  Future<td.InlineQueryResults> inlineResults(int botUserId, int chatId, String query, {String offset = ''}) =>
+      send<td.InlineQueryResults>(td.GetInlineQueryResults(
+        botUserId: botUserId,
+        chatId: chatId,
+        userLocation: null,
+        query: query,
+        offset: offset,
+      ));
+
+  Future<td.Message> sendInlineResult(int chatId, int queryId, String resultId, {int? replyToId}) =>
+      send<td.Message>(td.SendInlineQueryResultMessage(
+        chatId: chatId,
+        topicId: topicFor(chatId),
+        replyTo: replyTo(replyToId),
+        options: sendOptions(),
+        queryId: queryId,
+        resultId: resultId,
+        hideViaBot: false,
+      ));
+
+  Future<List<td.StickerSetInfo>> installedStickerSets() async =>
+      (await send<td.StickerSets>(const td.GetInstalledStickerSets(stickerType: td.StickerTypeRegular()))).sets;
+
+  Future<td.StickerSet> stickerSet(int setId) => send<td.StickerSet>(td.GetStickerSet(setId: setId));
+
+  Future<List<td.Sticker>> recentStickers() async =>
+      (await send<td.Stickers>(const td.GetRecentStickers(isAttached: false))).stickers;
+
+  Future<List<td.Sticker>> favoriteStickers() async => (await send<td.Stickers>(const td.GetFavoriteStickers())).stickers;
+
+  Future<List<td.Animation>> savedAnimations() async => (await send<td.Animations>(const td.GetSavedAnimations())).animations;
+
+  Future<td.Message> sendSticker(int chatId, td.Sticker sticker, {int? replyToId}) => sendContent(
+        chatId,
+        td.InputMessageSticker(
+          sticker: td.InputSticker(sticker: td.InputFileId(id: sticker.sticker.id), thumbnail: null, width: sticker.width, height: sticker.height),
+          emoji: sticker.emoji,
+        ),
+        replyToId: replyToId,
+      );
+
+  Future<td.Message> sendAnimation(int chatId, td.Animation animation, {int? replyToId}) => sendContent(
+        chatId,
+        td.InputMessageAnimation(
+          animation: td.InputAnimation(
+            animation: td.InputFileId(id: animation.animation.id),
+            thumbnail: null,
+            addedStickerFileIds: const [],
+            duration: animation.duration,
+            width: animation.width,
+            height: animation.height,
+          ),
+          caption: null,
+          showCaptionAboveMedia: false,
+          hasSpoiler: false,
+        ),
+        replyToId: replyToId,
+      );
+}
+
+/// Inverse of [formattedText] for editing: turns entities back into the markdown the composer understands.
+String toMarkdown(td.FormattedText text) {
+  final entities = [...text.entities]..sort((a, b) => a.offset.compareTo(b.offset));
+  final buffer = StringBuffer();
+  var cursor = 0;
+  for (final entity in entities) {
+    final start = entity.offset.clamp(0, text.text.length);
+    final end = (entity.offset + entity.length).clamp(start, text.text.length);
+    if (start < cursor) continue; // nested entities keep only the outer markup
+    final (left, right) = switch (entity.type) {
+      td.TextEntityTypeBold() => ('**', '**'),
+      td.TextEntityTypeItalic() => ('__', '__'),
+      td.TextEntityTypeStrikethrough() => ('~~', '~~'),
+      td.TextEntityTypeSpoiler() => ('||', '||'),
+      td.TextEntityTypeCode() => ('`', '`'),
+      td.TextEntityTypePre() || td.TextEntityTypePreCode() => ('```', '```'),
+      td.TextEntityTypeTextUrl(:final url) => ('[', ']($url)'),
+      td.TextEntityTypeMentionName(:final userId) => ('[', '](tg://user?id=$userId)'),
+      _ => ('', ''),
+    };
+    if (left.isEmpty) continue;
+    buffer
+      ..write(text.text.substring(cursor, start))
+      ..write(left)
+      ..write(text.text.substring(start, end))
+      ..write(right);
+    cursor = end;
+  }
+  buffer.write(text.text.substring(cursor));
+  return buffer.toString();
+}
+
+td.InputMessageContent photoContent(String path, {String caption = '', int width = 0, int height = 0}) => td.InputMessagePhoto(
+      photo: td.InputPhoto(
+        photo: td.InputFileLocal(path: path),
+        thumbnail: null,
+        video: null,
+        addedStickerFileIds: const [],
+        width: width,
+        height: height,
+      ),
+      caption: formattedText(caption),
+      showCaptionAboveMedia: false,
+      selfDestructType: null,
+      hasSpoiler: false,
+    );
+
+td.InputMessageContent videoContent(String path, {String caption = ''}) => td.InputMessageVideo(
+      video: td.InputVideo(
+        video: td.InputFileLocal(path: path),
+        thumbnail: null,
+        cover: null,
+        startTimestamp: 0,
+        addedStickerFileIds: const [],
+        duration: 0,
+        width: 0,
+        height: 0,
+        supportsStreaming: true,
+      ),
+      caption: formattedText(caption),
+      showCaptionAboveMedia: false,
+      selfDestructType: null,
+      hasSpoiler: false,
+    );
+
+/// Albums, the downloads list and saving media.
+extension MediaActions on TelegramAccount {
+  /// Sends 2..10 photos/videos as one album (Telegram groups them by media_album_id).
+  Future<void> sendAlbum(int chatId, List<td.InputMessageContent> contents, {int? replyToId}) async {
+    if (contents.length == 1) {
+      await sendContent(chatId, contents.first, replyToId: replyToId);
+      return;
+    }
+    await send<td.Messages>(td.SendMessageAlbum(
+      chatId: chatId,
+      topicId: topicFor(chatId),
+      replyTo: replyTo(replyToId),
+      options: sendOptions(),
+      inputMessageContents: contents,
+    ));
+  }
+
+  /// Downloads through TDLib's download list so the file shows up in the Downloads screen.
+  Future<void> addToDownloads(td.Message message, int fileId, {int priority = 16}) async {
+    final file = await send<td.File>(
+      td.AddFileToDownloads(fileId: fileId, chatId: message.chatId, messageId: message.id, priority: priority),
+    );
+    files[file.id] = file;
+  }
+
+  Future<td.FoundFileDownloads> fileDownloads({String offset = ''}) => send<td.FoundFileDownloads>(
+        td.SearchFileDownloads(query: '', onlyActive: false, onlyCompleted: false, offset: offset, limit: 100),
+      );
+
+  Future<void> setDownloadPaused(int fileId, bool paused) =>
+      send<td.Ok>(td.ToggleDownloadIsPaused(fileId: fileId, isPaused: paused));
+
+  Future<void> removeDownload(int fileId, {bool deleteFile = false}) =>
+      send<td.Ok>(td.RemoveFileFromDownloads(fileId: fileId, deleteFromCache: deleteFile));
+
+  Future<void> clearDownloads({bool deleteFiles = false}) =>
+      send<td.Ok>(td.RemoveAllFilesFromDownloads(onlyActive: false, onlyCompleted: false, deleteFromCache: deleteFiles));
+}
+
+/// The downloadable media file of a message (photo at full size, video, GIF, document, audio...).
+td.File? mediaFileOf(td.Message message) => switch (message.content) {
+      td.MessagePhoto(:final photo) => photo.sizes.isEmpty ? null : (photo.sizes.toList()..sort((a, b) => a.width.compareTo(b.width))).last.photo,
+      td.MessageVideo(:final video) => video.video,
+      td.MessageAnimation(:final animation) => animation.animation,
+      td.MessageVideoNote(:final videoNote) => videoNote.video,
+      td.MessageDocument(:final document) => document.document,
+      td.MessageAudio(:final audio) => audio.audio,
+      td.MessageVoiceNote(:final voiceNote) => voiceNote.voice,
+      _ => null,
+    };
+
+/// Proxy, storage, two-step verification and secret chats.
+extension SettingsActions on TelegramAccount {
+  Future<List<td.AddedProxy>> proxies() async => (await send<td.AddedProxies>(const td.GetProxies())).proxies;
+
+  Future<td.AddedProxy> addProxy(td.Proxy proxy, {bool enable = true}) =>
+      send<td.AddedProxy>(td.AddProxy(proxy: proxy, enable: enable, comment: ''));
+
+  Future<void> enableProxy(int id) => send<td.Ok>(td.EnableProxy(proxyId: id));
+
+  Future<void> disableProxy() => send<td.Ok>(const td.DisableProxy());
+
+  Future<void> removeProxy(int id) => send<td.Ok>(td.RemoveProxy(proxyId: id));
+
+  /// Round-trip time in milliseconds, or null when the proxy does not answer.
+  Future<int?> pingProxy(td.Proxy proxy) async {
+    try {
+      final result = await send<td.Seconds>(td.PingProxy(proxy: proxy));
+      return (result.seconds * 1000).round();
+    } on TdException {
+      return null;
+    }
+  }
+
+  Future<td.StorageStatisticsFast> storageStats() => send<td.StorageStatisticsFast>(const td.GetStorageStatisticsFast());
+
+  /// Deletes cached files; [ttl] keeps files used within that many seconds (0 = delete everything).
+  Future<void> clearCache({int ttl = 0}) => send<td.StorageStatistics>(td.OptimizeStorage(
+        size: 0,
+        ttl: ttl,
+        count: 0,
+        immunityDelay: 0,
+        fileTypes: const [],
+        chatIds: const [],
+        excludeChatIds: const [],
+        returnDeletedFileStatistics: false,
+        chatLimit: 0,
+      ));
+
+  Future<td.PasswordState> passwordState() => send<td.PasswordState>(const td.GetPasswordState());
+
+  Future<td.PasswordState> setPassword({
+    required String oldPassword,
+    required String newPassword,
+    String hint = '',
+    String recoveryEmail = '',
+  }) =>
+      send<td.PasswordState>(td.SetPassword(
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+        newHint: hint,
+        setRecoveryEmailAddress: recoveryEmail.isNotEmpty,
+        newRecoveryEmailAddress: recoveryEmail,
+      ));
+
+  Future<td.PasswordState> setRecoveryEmail(String password, String email) =>
+      send<td.PasswordState>(td.SetRecoveryEmailAddress(password: password, newRecoveryEmailAddress: email));
+
+  Future<td.PasswordState> confirmRecoveryEmail(String code) =>
+      send<td.PasswordState>(td.CheckRecoveryEmailAddressCode(code: code));
+
+  Future<td.Chat> createSecretChat(int userId) => send<td.Chat>(td.CreateNewSecretChat(userId: userId));
+
+  Future<void> closeSecretChat(int secretChatId) => send<td.Ok>(td.CloseSecretChat(secretChatId: secretChatId));
+}
+
+/// Parses t.me/proxy, t.me/socks and tg://proxy|socks links into a proxy.
+td.Proxy? parseProxyLink(String link) {
+  final uri = Uri.tryParse(link.trim());
+  if (uri == null) return null;
+  final kind = uri.scheme == 'tg' ? uri.host : (uri.pathSegments.isEmpty ? '' : uri.pathSegments.first);
+  final params = uri.queryParameters;
+  final server = params['server'] ?? '';
+  final port = int.tryParse(params['port'] ?? '') ?? 0;
+  if (server.isEmpty || port <= 0 || port > 65535) return null;
+  return switch (kind) {
+    'proxy' when (params['secret'] ?? '').isNotEmpty =>
+      td.Proxy(server: server, port: port, type: td.ProxyTypeMtproto(secret: params['secret']!)),
+    'socks' => td.Proxy(server: server, port: port, type: td.ProxyTypeSocks5(username: params['user'] ?? '', password: params['pass'] ?? '')),
+    _ => null,
+  };
+}
+
+/// Group and channel administration.
+extension AdminActions on TelegramAccount {
+  /// Members of a group/channel; [filter] is 'recent', 'admins', 'restricted', 'banned' or 'bots'.
+  Future<List<td.ChatMember>> members(td.Chat chat, {String filter = 'recent', String query = '', int offset = 0}) async {
+    final supergroup = supergroupOf(chat);
+    if (supergroup == null) {
+      final info = await send<td.BasicGroupFullInfo>(td.GetBasicGroupFullInfo(basicGroupId: basicGroupOf(chat)!.id));
+      return info.members;
+    }
+    final td.SupergroupMembersFilter supergroupFilter = switch (filter) {
+      'admins' => const td.SupergroupMembersFilterAdministrators(),
+      'restricted' => td.SupergroupMembersFilterRestricted(query: query),
+      'banned' => td.SupergroupMembersFilterBanned(query: query),
+      'bots' => const td.SupergroupMembersFilterBots(),
+      _ => query.isEmpty ? const td.SupergroupMembersFilterRecent() : td.SupergroupMembersFilterSearch(query: query),
+    };
+    return (await send<td.ChatMembers>(
+      td.GetSupergroupMembers(supergroupId: supergroup.id, filter: supergroupFilter, offset: offset, limit: 200),
+    ))
+        .members;
+  }
+
+  Future<td.ChatMember> member(int chatId, int userId) =>
+      send<td.ChatMember>(td.GetChatMember(chatId: chatId, memberId: td.MessageSenderUser(userId: userId)));
+
+  Future<void> setMemberStatus(int chatId, int userId, td.ChatMemberStatus status) =>
+      send<td.Ok>(td.SetChatMemberStatus(chatId: chatId, memberId: td.MessageSenderUser(userId: userId), status: status));
+
+  Future<void> banMember(int chatId, int userId, {bool deleteMessages = false}) => send<td.Ok>(td.BanChatMember(
+        chatId: chatId,
+        memberId: td.MessageSenderUser(userId: userId),
+        bannedUntilDate: 0,
+        revokeMessages: deleteMessages,
+      ));
+
+  Future<void> setDefaultPermissions(int chatId, td.ChatPermissions permissions) =>
+      send<td.Ok>(td.SetChatPermissions(chatId: chatId, permissions: permissions));
+
+  Future<void> setSlowMode(int chatId, int seconds) => send<td.Ok>(td.SetChatSlowModeDelay(chatId: chatId, slowModeDelay: seconds));
+
+  Future<void> setAutoDelete(int chatId, int seconds) =>
+      send<td.Ok>(td.SetChatMessageAutoDeleteTime(chatId: chatId, messageAutoDeleteTime: seconds));
+
+  Future<td.SupergroupFullInfo> supergroupInfo(int supergroupId) =>
+      send<td.SupergroupFullInfo>(td.GetSupergroupFullInfo(supergroupId: supergroupId));
+
+  Future<List<td.ChatInviteLink>> inviteLinks(int chatId, {bool revoked = false}) async => (await send<td.ChatInviteLinks>(td.GetChatInviteLinks(
+        chatId: chatId,
+        creatorUserId: myId,
+        isRevoked: revoked,
+        offsetDate: 0,
+        offsetInviteLink: '',
+        limit: 100,
+      )))
+          .inviteLinks;
+
+  Future<td.ChatInviteLink> createInviteLink(int chatId, {String name = '', int expiresAt = 0, int memberLimit = 0, bool joinRequest = false}) =>
+      send<td.ChatInviteLink>(td.CreateChatInviteLink(
+        chatId: chatId,
+        name: name,
+        expirationDate: expiresAt,
+        memberLimit: joinRequest ? 0 : memberLimit,
+        createsJoinRequest: joinRequest,
+      ));
+
+  Future<void> revokeInviteLink(int chatId, String link) =>
+      send<td.ChatInviteLinks>(td.RevokeChatInviteLink(chatId: chatId, inviteLink: link));
+
+  Future<void> deleteRevokedInviteLink(int chatId, String link) =>
+      send<td.Ok>(td.DeleteRevokedChatInviteLink(chatId: chatId, inviteLink: link));
+
+  Future<td.ChatJoinRequests> joinRequests(int chatId) => send<td.ChatJoinRequests>(
+        td.GetChatJoinRequests(chatId: chatId, inviteLink: '', query: '', offsetRequest: null, limit: 100),
+      );
+
+  Future<void> processJoinRequest(int chatId, int userId, {required bool approve}) =>
+      send<td.Ok>(td.ProcessChatJoinRequest(chatId: chatId, userId: userId, approve: approve));
+}
+
+/// Live location and stories.
+extension LiveActions on TelegramAccount {
+  Future<td.Message> sendLiveLocation(int chatId, double latitude, double longitude, {required int periodSeconds}) => sendContent(
+        chatId,
+        td.InputMessageLiveLocation(
+          location: td.LiveLocation(
+            location: td.Location(latitude: latitude, longitude: longitude, horizontalAccuracy: 0),
+            livePeriod: periodSeconds,
+            heading: 0,
+            proximityAlertRadius: 0,
+          ),
+        ),
+      );
+
+  /// Updates a live location; [latitude] null stops sharing.
+  Future<void> updateLiveLocation(int chatId, int messageId, {double? latitude, double? longitude}) => send<td.Message>(td.EditMessageLiveLocation(
+        chatId: chatId,
+        messageId: messageId,
+        replyMarkup: null,
+        location: latitude == null || longitude == null
+            ? null
+            : td.LiveLocation(
+                location: td.Location(latitude: latitude, longitude: longitude, horizontalAccuracy: 0),
+                livePeriod: 0,
+                heading: 0,
+                proximityAlertRadius: 0,
+              ),
+      ));
+
+  Future<td.CanPostStoryResult> canPostStory() => send<td.CanPostStoryResult>(td.CanPostStory(chatId: myId));
+
+  /// Posts a photo or video story to the user's own profile for [activeSeconds] (6/12/24/48 h).
+  Future<td.Story> postStory(String path, {required bool isVideo, String caption = '', bool contactsOnly = false, int activeSeconds = 86400}) =>
+      send<td.Story>(td.PostStory(
+        chatId: myId,
+        content: isVideo
+            ? td.InputStoryContentVideo(
+                video: td.InputFileLocal(path: path),
+                addedStickerFileIds: const [],
+                duration: 0,
+                coverFrameTimestamp: 0,
+                isAnimation: false,
+              )
+            : td.InputStoryContentPhoto(photo: td.InputFileLocal(path: path), addedStickerFileIds: const []),
+        areas: null,
+        caption: formattedText(caption),
+        privacySettings: contactsOnly
+            ? const td.StoryPrivacySettingsContacts(exceptUserIds: [])
+            : const td.StoryPrivacySettingsEveryone(exceptUserIds: []),
+        albumIds: const [],
+        activePeriod: activeSeconds,
+        fromStoryFullId: null,
+        isPostedToChatPage: true,
+        protectContent: false,
+      ));
+
+  Future<void> reactToStory(int posterChatId, int storyId, String? emoji) => send<td.Ok>(td.SetStoryReaction(
+        storyPosterChatId: posterChatId,
+        storyId: storyId,
+        reactionType: emoji == null ? null : td.ReactionTypeEmoji(emoji: emoji),
+        updateRecentReactions: true,
+      ));
+
+  Future<td.Message> replyToStory(int posterChatId, int storyId, String text) => send<td.Message>(td.SendMessage(
+        chatId: posterChatId,
+        topicId: null,
+        replyTo: td.InputMessageReplyToStory(storyPosterChatId: posterChatId, storyId: storyId),
+        options: sendOptions(),
+        replyMarkup: null,
+        inputMessageContent: td.InputMessageText(text: formattedText(text), linkPreviewOptions: null, clearDraft: false),
       ));
 }

@@ -36,6 +36,16 @@ Telegram'ning barcha chatlari, kanallari va guruhlari, ustiga Plus Messenger, Ni
 - Animatsion stikerlar: TGS (Lottie) va WebM (Android)
 - Ovozsiz yoki rejalashtirib yuborish, rejalashtirilgan xabarlar ro'yxati
 - Push-bildirishnomalar (Android, FCM) — Firebase konfiguratsiyasi qo'shilganda yoqiladi
+- Matnni formatlash (qalin, kursiv, ustidan chizilgan, spoiler, kod, havola) — matnni belgilab menyudan tanlanadi, tahrirlashda saqlanadi
+- `@` mention tavsiyalari va inline botlar (`@gif`, `@vid` va boshqalar)
+- Stiker, GIF va emoji paneli: o'rnatilgan to'plamlar, so'nggi va sevimli stikerlar, saqlangan va qidirilgan GIF'lar
+- Albomlar: bir nechta rasm/video bitta albom bo'lib yuboriladi va to'r ko'rinishida chiqadi
+- Galereyaga saqlash, yuklanmalar menejeri (pauza, davom ettirish, o'chirish)
+- Jonli joylashuv (15 daqiqa / 1 soat / 8 soat), to'xtatish tugmasi bilan
+- Maxfiy chat boshlash (oxirigacha shifrlangan)
+- Guruh/kanal boshqaruvi: adminlar va huquqlar, cheklash va bloklash, umumiy ruxsatlar, sekin rejim, taklif havolalari, qo'shilish so'rovlari, avtomatik o'chirish
+- Hikoya joylash, hikoyaga javob va reaksiya
+- Sozlamalar: proksi (MTProto, SOCKS5, HTTP, `t.me/proxy` havolasi), ma'lumotlar va xotira (kesh tozalash, saqlash muddati, avtomatik yuklash), ikki bosqichli parolni boshqarish
 
 **Sado qo'shimchalari**
 - **Ghost rejim**: onlayn holat, "o'qildi" va "yozmoqda" yuborilmaydi
@@ -43,6 +53,9 @@ Telegram'ning barcha chatlari, kanallari va guruhlari, ustiga Plus Messenger, Ni
 - **Multi-akkaunt**: 5 tagacha hisob, menyudan bir zumda almashtiriladi
 - **Parol bilan qulflash**: 4 xonali PIN, avtomatik qulflash, xato urinishlarda kutish vaqti; qulf yoqilganda bildirishnomalarda matn ko'rsatilmaydi
 - **Chat turlari bo'yicha tablar** (Plus Messenger uslubida): shaxsiy, guruhlar, kanallar, botlar, o'qilmagan
+- **Yashirin chatlar**: ro'yxatdan yashiriladi, PIN bilan ochiladi, bildirishnomada matn ko'rsatilmaydi
+- **Chat foni**: gradientlar, ranglar yoki galereyadan rasm
+- **Planshet ko'rinishi**: keng ekranda chatlar ro'yxati va ochiq chat yonma-yon
 - Ovozli xabar va video tezligi (1x / 1.5x / 2x)
 - Ko'rinish: 7 ta asosiy rang, yorug' yoki qorong'i mavzu, matn hajmi, xabar burchaklari
 - 3 til: o'zbek, rus va ingliz
@@ -128,8 +141,12 @@ cd server && python3.13 -m venv .venv && .venv/bin/pip install -r requirements-d
 2. Telegram push'larni sizning `api_id` uchun yetkazishi kerak. Buning uchun Telegram tomonida FCM sozlamasi talab qilinishi mumkin: [core.telegram.org/api/push-updates](https://core.telegram.org/api/push-updates) sahifasini tekshiring.
 3. Fayl bo'lmasa ilova odatdagidek ishlaydi, push o'chiq qoladi. Ilova ochiq yoki fonda bo'lganda lokal bildirishnomalar har doim ishlaydi.
 
+## Crash hisobotlari (ixtiyoriy)
+
+`--dart-define=SENTRY_DSN=https://...` bilan yig'ilganda xatolar Sentry'ga yuboriladi. Hisobotda foydalanuvchi, xabar matni, skrinshot va breadcrumb bo'lmaydi; tokenlar, `api_hash` va telefon raqamlari o'chiriladi. DSN berilmasa hech narsa yuborilmaydi.
+
 ## Hozircha yo'q
 
-- **Ovozli va video qo'ng'iroqlar**: Telegram qo'ng'iroqlari `tgcalls` (WebRTC) native kutubxonasini Android va iOS uchun yig'ib ulashni talab qiladi. Qo'ng'iroq yozuvlari ko'rsatiladi.
-- **iOS push**: Telegram'ning APNs payload'larini ko'rsatish uchun Notification Service Extension kerak; hozir iOS'da faqat ilova ochiq yoki fonda turganda bildirishnoma keladi.
-- Karta orqali to'lovlar (Stars ishlaydi), hikoya joylash, custom emoji, iOS'da WebM stikerlar (eskiz ko'rsatiladi).
+- **Ovozli va video qo'ng'iroqlar, guruh video chatlari**: Telegram qo'ng'iroqlari `tgcalls` (WebRTC) native kutubxonasini Android NDK va iOS uchun yig'ib, Dart bilan bog'lashni talab qiladi. Qo'ng'iroq yozuvlari ko'rsatiladi.
+- **iOS push**: Notification Service Extension kerak; hozir iOS'da faqat ilova ochiq yoki fonda turganda bildirishnoma keladi.
+- Karta orqali to'lov (Stars ishlaydi), custom emoji, iOS'da WebM stikerlar (eskiz ko'rsatiladi), rasm/video muharriri.

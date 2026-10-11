@@ -12,8 +12,10 @@ import '../../state/providers.dart';
 import '../../state/settings.dart';
 import '../../widgets/common.dart';
 import '../chat/media_viewers.dart';
+import 'advanced_settings.dart';
 import 'folders_screen.dart';
 import 'privacy_screen.dart';
+import 'wallpaper.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -121,6 +123,21 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.pin_rounded),
             title: Text(s.t('passcode_lock')),
             onTap: () => _push(context, const PasscodeSettingsScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.shield_rounded),
+            title: Text(s.t('two_step')),
+            onTap: () => _push(context, const TwoStepScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.data_usage_rounded),
+            title: Text(s.t('data_storage')),
+            onTap: () => _push(context, const StorageScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.vpn_lock_rounded),
+            title: Text(s.t('proxy')),
+            onTap: () => _push(context, const ProxyScreen()),
           ),
           ListTile(
             leading: const Icon(Icons.devices_rounded),
@@ -409,6 +426,12 @@ class AppearanceScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(s.t('appearance'))),
       body: ListView(
         children: [
+          ListTile(
+            leading: const Icon(Icons.wallpaper_rounded),
+            title: Text(s.t('chat_background')),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WallpaperScreen())),
+          ),
           SectionHeader(s.t('theme')),
           RadioGroup<ThemeMode>(
             groupValue: settings.themeMode,

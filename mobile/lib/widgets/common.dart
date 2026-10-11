@@ -39,8 +39,11 @@ class TdImage extends ConsumerWidget {
     this.width,
     this.height,
     this.placeholder,
+    this.download = true,
   });
 
+  /// False shows only what is already cached (data-saving mode); the caller offers a download button.
+  final bool download;
   final td.File file;
   final td.Minithumbnail? minithumbnail;
   final BoxFit fit;
@@ -50,7 +53,7 @@ class TdImage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(fileProvider(file.id)).value ?? file;
+    final current = (download ? ref.watch(fileProvider(file.id)).value : ref.watch(fileStateProvider(file.id)).value) ?? file;
     final fallback = minithumbnail != null
         ? Image.memory(
             base64Decode(minithumbnail!.data),

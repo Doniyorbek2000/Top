@@ -1,4 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sado/core/redaction.dart';
+import 'package:sado/state/actions.dart';
+import 'package:tdlib_ex/td_api.dart' as td;
 import 'package:sado/core/app_lock.dart';
 import 'package:sado/core/push.dart';
 import 'package:sado/features/chat/message_content.dart';
@@ -64,4 +69,67 @@ void main() {
       expect(formatInvoiceAmount(14900, 'UZS'), '14900 UZS');
     });
   });
+
+  group('markdown formatting', () {
+    final hasTdlib = (Platform.environment['TDJSON_PATH'] ?? '').isNotEmpty;
+
+    test('plain text skips the parser', () {
+      final text = formattedText('just text, no markup');
+      expect(text.text, 'just text, no markup');
+      expect(text.entities, isEmpty);
+    });
+
+    test('TDLib parses bold, italic, spoiler and links', () {
+      final text = formattedText('**bold** __it__ ||hide|| [site](https://sado.uz)');
+      expect(text.text, 'bold it hide site');
+      final types = text.entities.map((e) => e.type.runtimeType).toSet();
+      expect(types, containsAll([td.TextEntityTypeBold, td.TextEntityTypeItalic, td.TextEntityTypeSpoiler, td.TextEntityTypeTextUrl]));
+    }, skip: hasTdlib ? false : 'needs TDJSON_PATH');
+
+    test('toMarkdown round-trips through the parser', () {
+      const source = '**bold** and `code` and [link](https://example.com/)';
+      final parsed = formattedText(source);
+      expect(formattedText(toMarkdown(parsed)).entities.length, parsed.entities.length);
+      expect(formattedText(toMarkdown(parsed)).text, parsed.text);
+    }, skip: hasTdlib ? false : 'needs TDJSON_PATH');
+
+    test('toMarkdown writes markers for entities', () {
+      final text = td.FormattedText(text: 'hi there', entities: [
+        td.TextEntity(offset: 0, length: 2, type: const td.TextEntityTypeBold()),
+        td.TextEntity(offset: 3, length: 5, type: const td.TextEntityTypeTextUrl(url: 'https://t.me')),
+      ]);
+      expect(toMarkdown(text), '**hi** [there](https://t.me)');
+    });
+  });
+
+  group('proxy links', () {
+    test('MTProto link', () {
+      final proxy = parseProxyLink('https://t.me/proxy?server=1.2.3.4&port=443&secret=ee00ff')!;
+      expect(proxy.server, '1.2.3.4');
+      expect(proxy.port, 443);
+      expect((proxy.type as td.ProxyTypeMtproto).secret, 'ee00ff');
+    });
+
+    test('SOCKS5 tg:// link with credentials', () {
+      final proxy = parseProxyLink('tg://socks?server=proxy.example&port=1080&user=a&pass=b')!;
+      expect(proxy.type, isA<td.ProxyTypeSocks5>());
+      expect((proxy.type as td.ProxyTypeSocks5).username, 'a');
+    });
+
+    test('invalid links are rejected', () {
+      expect(parseProxyLink('https://t.me/proxy?server=x&port=99999&secret=a'), isNull);
+      expect(parseProxyLink('https://t.me/proxy?server=x&port=443'), isNull);
+      expect(parseProxyLink('not a link'), isNull);
+    });
+  });
+
+  group('crash report redaction', () {
+    test('removes API hashes, tokens and phone numbers', () {
+      final out = redactSecrets('api_hash=0123456789abcdef0123456789abcdef token: abc.def phone +998901234567');
+      expect(out, isNot(contains('0123456789abcdef')));
+      expect(out, isNot(contains('abc.def')));
+      expect(out, isNot(contains('998901234567')));
+    });
+  });
 }
+

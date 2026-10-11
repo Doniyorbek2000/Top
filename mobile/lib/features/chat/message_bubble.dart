@@ -69,6 +69,7 @@ class MessageBubble extends ConsumerWidget {
     required this.onLongPress,
     required this.onReplyTap,
     this.onInsertText,
+    this.album,
   });
 
   final td.Message message;
@@ -80,6 +81,9 @@ class MessageBubble extends ConsumerWidget {
   final VoidCallback onLongPress;
   final void Function(int messageId) onReplyTap;
   final InsertText? onInsertText;
+
+  /// All messages of the media album this bubble stands for (oldest first), or null.
+  final List<td.Message>? album;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -95,10 +99,13 @@ class MessageBubble extends ConsumerWidget {
     final bareMedia = content is td.MessageSticker || content is td.MessageAnimatedEmoji || content is td.MessageDice ||
         content is td.MessageVideoNote;
     final isMediaBubble = content is td.MessagePhoto || content is td.MessageVideo || content is td.MessageAnimation;
-    final text = switch (content) {
-      td.MessageText(:final text) => text,
-      _ => captionOf(content),
-    };
+    final album = this.album;
+    final text = album != null
+        ? album.map((m) => captionOf(m.content)).firstWhere((c) => c != null && c.text.isNotEmpty, orElse: () => null)
+        : switch (content) {
+            td.MessageText(:final text) => text,
+            _ => captionOf(content),
+          };
     final hasText = text != null && text.text.isNotEmpty;
     final textColor = outgoing ? colors.outgoingText : colors.incomingText;
     final radius = Radius.circular(settings.bubbleRadius);
@@ -127,7 +134,7 @@ class MessageBubble extends ConsumerWidget {
             borderRadius: isMediaBubble && senderLabel == null && message.replyTo == null && message.forwardInfo == null
                 ? BorderRadius.vertical(top: radius, bottom: hasText ? Radius.zero : radius)
                 : BorderRadius.zero,
-            child: MessageMedia(message: message, maxWidth: maxWidth),
+            child: album != null ? AlbumGrid(messages: album, maxWidth: maxWidth) : MessageMedia(message: message, maxWidth: maxWidth),
           ),
         ),
       if (hasText)

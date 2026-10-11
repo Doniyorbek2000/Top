@@ -4,11 +4,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
+import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/formatters.dart';
 import '../../core/tdlib/td_client.dart';
 import '../../l10n/strings.dart';
+import '../../state/actions.dart';
 import '../../state/providers.dart';
 import '../../state/settings.dart';
 import '../../state/telegram.dart';
@@ -24,16 +26,18 @@ class StoriesBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final feed = ref.watch(storyFeedProvider);
-    if (feed.isEmpty) return const SizedBox.shrink();
     final account = ref.watch(accountProvider);
     final primary = Theme.of(context).colorScheme.primary;
+    final hasOwn = feed.any((e) => e.chatId == account.myId);
     return SizedBox(
       height: 96,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        itemCount: feed.length,
-        itemBuilder: (context, index) {
+        itemCount: feed.length + (hasOwn ? 0 : 1),
+        itemBuilder: (context, rawIndex) {
+          if (!hasOwn && rawIndex == 0) return const _AddStoryTile();
+          final index = rawIndex - (hasOwn ? 0 : 1);
           final entry = feed[index];
           final chat = account.chats[entry.chatId];
           final unread = _hasUnread(entry);
@@ -49,13 +53,16 @@ class StoriesBar extends ConsumerWidget {
               width: 72,
               child: Column(
                 children: [
-                  Container(
+                  GestureDetector(
+                    onLongPress: isMe ? () => postStoryFlow(context, ref) : null,
+                    child: Container(
                     padding: const EdgeInsets.all(2.5),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: unread ? primary : Theme.of(context).dividerColor, width: 2.2),
                     ),
                     child: ChatAvatar(chatId: entry.chatId, size: 50, showOnline: false),
+                  ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -95,6 +102,8 @@ class _StoryViewerState extends ConsumerState<StoryViewer> with SingleTickerProv
   late final AnimationController _progress = AnimationController(vsync: this)..addStatusListener(_onProgressStatus);
   int? _openedChatId;
   int? _openedStoryId;
+  final _reply = TextEditingController();
+  final _replyFocus = FocusNode();
 
   static const _photoDuration = Duration(seconds: 6);
 
@@ -103,6 +112,7 @@ class _StoryViewerState extends ConsumerState<StoryViewer> with SingleTickerProv
   @override
   void initState() {
     super.initState();
+    _replyFocus.addListener(() => _replyFocus.hasFocus ? _pause() : _resume());
     // Start at the first unread story of the chat, like Telegram.
     final firstUnread = _entry.stories.indexWhere((s) => s.storyId > _entry.maxReadStoryId);
     _storyIndex = firstUnread < 0 ? 0 : firstUnread;
@@ -112,6 +122,8 @@ class _StoryViewerState extends ConsumerState<StoryViewer> with SingleTickerProv
   @override
   void dispose() {
     _closeCurrent();
+    _reply.dispose();
+    _replyFocus.dispose();
     _progress.dispose();
     unawaited(_video?.dispose());
     super.dispose();
@@ -217,6 +229,23 @@ class _StoryViewerState extends ConsumerState<StoryViewer> with SingleTickerProv
       return;
     }
     unawaited(_load());
+  }
+
+  Future<void> _sendReply(td.Story story) async {
+    final text = _reply.text.trim();
+    if (text.isEmpty) return;
+    _reply.clear();
+    _replyFocus.unfocus();
+    final sent = await guard(context, () => _account.replyToStory(story.posterChatId, story.id, text));
+    if (sent != null && mounted) showToast(context, context.t('story_reply_sent'));
+  }
+
+  Future<void> _toggleLike(td.Story story) async {
+    final liked = story.chosenReactionType != null;
+    await guard(context, () => _account.reactToStory(story.posterChatId, story.id, liked ? null : '❤'));
+    if (!mounted) return;
+    final updated = await _account.send<td.Story>(td.GetStory(storyPosterChatId: story.posterChatId, storyId: story.id, onlyLocal: true)).catchError((Object _) => story);
+    if (mounted && _story?.id == updated.id) setState(() => _story = updated);
   }
 
   void _pause() {
@@ -334,6 +363,37 @@ class _StoryViewerState extends ConsumerState<StoryViewer> with SingleTickerProv
                       ),
                       child: FormattedTextView(text: story.caption, style: const TextStyle(color: Colors.white, fontSize: 15)),
                     ),
+                  if (story != null && story.canBeReplied && story.posterChatId != _account.myId)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 8, 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _reply,
+                              focusNode: _replyFocus,
+                              style: const TextStyle(color: Colors.white),
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _sendReply(story),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: s.t('story_reply_hint'),
+                                hintStyle: const TextStyle(color: Colors.white60),
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Colors.white38)),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Colors.white)),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              story.chosenReactionType != null ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                              color: story.chosenReactionType != null ? Colors.redAccent : Colors.white,
+                            ),
+                            onPressed: () => _toggleLike(story),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (story?.interactionInfo case final td.StoryInteractionInfo interaction when story!.canGetInteractions)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -352,6 +412,118 @@ class _StoryViewerState extends ConsumerState<StoryViewer> with SingleTickerProv
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AddStoryTile extends ConsumerWidget {
+  const _AddStoryTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final account = ref.watch(accountProvider);
+    final primary = Theme.of(context).colorScheme.primary;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => postStoryFlow(context, ref),
+      child: SizedBox(
+        width: 72,
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                Padding(padding: const EdgeInsets.all(4.7), child: UserAvatar(userId: account.myId, size: 50, showOnline: false)),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: CircleAvatar(radius: 10, backgroundColor: primary, child: const Icon(Icons.add_rounded, size: 16, color: Colors.white)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(context.t('add_story'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Picks a photo/video, asks for caption, audience and duration, and posts it to the user's stories.
+Future<void> postStoryFlow(BuildContext context, WidgetRef ref) async {
+  final account = ref.read(accountProvider);
+  final s = context.s;
+  final check = await guard(context, account.canPostStory);
+  if (check == null || !context.mounted) return;
+  if (check is! td.CanPostStoryResultOk) {
+    showToast(context, s.t(check is td.CanPostStoryResultPremiumNeeded ? 'story_premium_needed' : 'story_limit'));
+    return;
+  }
+  final picked = await ImagePicker().pickMedia(imageQuality: 92);
+  if (picked == null || !context.mounted) return;
+  final lower = picked.path.toLowerCase();
+  final isVideo = lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.endsWith('.webm') || lower.endsWith('.mkv');
+  final options = await showDialog<(String, bool, int)>(context: context, builder: (_) => const _StoryOptionsDialog());
+  if (options == null || !context.mounted) return;
+  final story = await guard(
+    context,
+    () => account.postStory(picked.path, isVideo: isVideo, caption: options.$1, contactsOnly: options.$2, activeSeconds: options.$3),
+  );
+  if (story != null && context.mounted) showToast(context, s.t('story_posting'));
+}
+
+class _StoryOptionsDialog extends StatefulWidget {
+  const _StoryOptionsDialog();
+
+  @override
+  State<_StoryOptionsDialog> createState() => _StoryOptionsDialogState();
+}
+
+class _StoryOptionsDialogState extends State<_StoryOptionsDialog> {
+  final _caption = TextEditingController();
+  bool _contactsOnly = false;
+  int _hours = 24;
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.s;
+    return AlertDialog(
+      title: Text(s.t('add_story')),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: _caption, maxLines: 3, minLines: 1, decoration: InputDecoration(labelText: s.t('caption'))),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: [
+                ButtonSegment(value: false, label: Text(s.t('story_everyone'))),
+                ButtonSegment(value: true, label: Text(s.t('story_contacts'))),
+              ],
+              selected: {_contactsOnly},
+              onSelectionChanged: (v) => setState(() => _contactsOnly = v.first),
+            ),
+            const SizedBox(height: 8),
+            // 6/12/48 h periods are Premium-only on Telegram; 24 h is always allowed.
+            DropdownButtonFormField<int>(
+              initialValue: _hours,
+              decoration: InputDecoration(labelText: s.t('story_duration')),
+              items: [for (final h in const [6, 12, 24, 48]) DropdownMenuItem(value: h, child: Text('$h h'))],
+              onChanged: (v) => setState(() => _hours = v ?? 24),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.t('cancel'))),
+        TextButton(onPressed: () => Navigator.pop(context, (_caption.text.trim(), _contactsOnly, _hours * 3600)), child: Text(s.t('publish'))),
+      ],
     );
   }
 }

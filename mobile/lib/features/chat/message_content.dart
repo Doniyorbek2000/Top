@@ -15,10 +15,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/formatters.dart';
+import '../../core/live_location.dart';
 import '../../core/theme.dart';
 import '../../l10n/strings.dart';
 import '../../state/actions.dart';
 import '../../state/providers.dart';
+import '../../state/settings.dart';
 import '../../widgets/common.dart';
 import 'bot_keyboard.dart';
 import 'media_viewers.dart';
@@ -182,12 +184,14 @@ class MessageMedia extends ConsumerWidget {
         ),
       td.MessageVoiceNote(:final voiceNote) => VoiceNoteView(message: message, voiceNote: voiceNote),
       td.MessageAudio(:final audio) => _FileView(
+          message: message,
           file: audio.audio,
           name: [audio.performer, audio.title].where((p) => p.isNotEmpty).join(' — ').ifEmpty(audio.fileName),
           icon: Icons.music_note_rounded,
           mimeType: audio.mimeType,
         ),
       td.MessageDocument(:final document) => _FileView(
+          message: message,
           file: document.document,
           name: document.fileName,
           icon: Icons.insert_drive_file_rounded,
@@ -195,6 +199,7 @@ class MessageMedia extends ConsumerWidget {
         ),
       td.MessageSticker(:final sticker) => _StickerView(sticker: sticker),
       td.MessageLocation(:final location) => _LocationView(latitude: location.latitude, longitude: location.longitude),
+      td.MessageLiveLocation(:final location, :final expiresIn) => _LiveLocationView(message: message, location: location, expiresIn: expiresIn),
       td.MessageVenue(:final venue) =>
         _LocationView(latitude: venue.location.latitude, longitude: venue.location.longitude, title: venue.title, subtitle: venue.address),
       td.MessageContact(:final contact) => _ContactView(contact: contact),
@@ -236,28 +241,50 @@ class _PhotoView extends StatefulWidget {
 
 class _PhotoViewState extends State<_PhotoView> {
   late bool _hidden = widget.spoiler;
+  bool _requested = false;
 
   @override
   Widget build(BuildContext context) {
     final size = bestPhotoSize(widget.photo);
     if (size == null) return const SizedBox.shrink();
     final box = _fit(size.width, size.height, widget.maxWidth);
-    final image = TdImage(file: size.photo, minithumbnail: widget.photo.minithumbnail, width: box.width, height: box.height);
-    return GestureDetector(
-      onTap: () {
-        if (_hidden) {
-          setState(() => _hidden = false);
-          return;
-        }
+    return Consumer(builder: (context, ref, _) {
+      final auto = ref.watch(settingsProvider.select((s) => s.autoDownloadPhotos));
+      final download = auto || _requested || size.photo.local.isDownloadingCompleted;
+      final image = TdImage(file: size.photo, minithumbnail: widget.photo.minithumbnail, width: box.width, height: box.height, download: download);
+      return GestureDetector(
+        onTap: () {
+          if (!download) {
+            setState(() => _requested = true);
+            return;
+          }
+          if (_hidden) {
+            setState(() => _hidden = false);
+            return;
+          }
         final full = bestPhotoSize(widget.photo, target: 2560)!;
         openPhotoViewer(context, full.photo, widget.photo.minithumbnail);
       },
-      child: SizedBox(
-        width: box.width,
-        height: box.height,
-        child: _hidden ? ImageFiltered(imageFilter: _blur, child: image) : image,
-      ),
-    );
+        child: SizedBox(
+          width: box.width,
+          height: box.height,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _hidden ? ImageFiltered(imageFilter: _blur, child: image) : image,
+              if (!download)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                    child: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    });
   }
 }
 
@@ -293,6 +320,20 @@ class _VideoThumb extends ConsumerWidget {
     Widget preview = thumb != null && thumb.format is! td.ThumbnailFormatMpeg4
         ? TdImage(file: thumb.file, minithumbnail: minithumbnail, width: box.width, height: box.height)
         : Container(width: box.width, height: box.height, color: Colors.black26);
+    if (isGif && ref.watch(settingsProvider.select((s) => s.autoplayGifs))) {
+      // GIFs are small MP4s: download and loop them inline like Telegram.
+      final current = ref.watch(fileProvider(file.id)).value ?? file;
+      if (current.local.isDownloadingCompleted && current.local.path.isNotEmpty) {
+        return GestureDetector(
+          onTap: () => openVideoPlayer(context, file, loop: true),
+          child: SizedBox(
+            width: box.width,
+            height: box.height,
+            child: ClipRect(child: LoopingVideo(key: ValueKey(current.local.path), path: current.local.path, fallback: preview)),
+          ),
+        );
+      }
+    }
     if (round) preview = ClipOval(child: preview);
     return GestureDetector(
       onTap: () => openVideoPlayer(context, file, loop: isGif),
@@ -324,8 +365,9 @@ class _VideoThumb extends ConsumerWidget {
 }
 
 class _FileView extends ConsumerWidget {
-  const _FileView({required this.file, required this.name, required this.icon, required this.mimeType});
+  const _FileView({required this.message, required this.file, required this.name, required this.icon, required this.mimeType});
 
+  final td.Message message;
   final td.File file;
   final String name;
   final IconData icon;
@@ -347,6 +389,8 @@ class _FileView extends ConsumerWidget {
         } else if (downloading) {
           account.cancelDownload(file.id);
         } else {
+          // Registered in TDLib's download list so it appears (and can be paused) in Downloads.
+          await account.addToDownloads(message, file.id, priority: 32).catchError((Object _) {});
           final path = await account.downloadFile(file.id, priority: 32);
           if (path != null) await OpenFilex.open(path, type: mimeType.isEmpty ? null : mimeType);
         }
@@ -431,24 +475,24 @@ class _StickerView extends ConsumerWidget {
                 repeat: true,
                 errorBuilder: (_, _, _) => _fallback(),
               )
-            : _LoopingVideo(path: path, fallback: _fallback()),
+            : LoopingVideo(path: path, fallback: _fallback()),
       ),
     );
   }
 }
 
-/// Silent looping video for WebM stickers.
-class _LoopingVideo extends StatefulWidget {
-  const _LoopingVideo({required this.path, required this.fallback});
+/// Silent looping video (WebM stickers, GIF previews).
+class LoopingVideo extends StatefulWidget {
+  const LoopingVideo({super.key, required this.path, required this.fallback});
 
   final String path;
   final Widget fallback;
 
   @override
-  State<_LoopingVideo> createState() => _LoopingVideoState();
+  State<LoopingVideo> createState() => _LoopingVideoState();
 }
 
-class _LoopingVideoState extends State<_LoopingVideo> {
+class _LoopingVideoState extends State<LoopingVideo> {
   late final VideoPlayerController _controller = VideoPlayerController.file(File(widget.path));
   bool _ready = false;
 
@@ -525,6 +569,47 @@ class _LocationView extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LiveLocationView extends ConsumerWidget {
+  const _LiveLocationView({required this.message, required this.location, required this.expiresIn});
+
+  final td.Message message;
+  final td.LiveLocation location;
+  final int expiresIn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.s;
+    final live = expiresIn > 0;
+    final remaining = Duration(seconds: expiresIn);
+    return ValueListenableBuilder<int>(
+      valueListenable: LiveLocationService.instance.revision,
+      builder: (context, _, _) {
+        final sharing = message.isOutgoing && live && LiveLocationService.instance.isSharing(message.chatId, message.id);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _LocationView(
+              latitude: location.location.latitude,
+              longitude: location.location.longitude,
+              title: s.t(live ? 'live_location' : 'live_location_ended'),
+              subtitle: live
+                  ? s.t('live_location_left', {'time': remaining.inHours > 0 ? '${remaining.inHours} h ${remaining.inMinutes % 60} min' : '${remaining.inMinutes} min'})
+                  : null,
+            ),
+            if (sharing)
+              TextButton.icon(
+                onPressed: () => LiveLocationService.instance.stop(ref.read(accountProvider), message.chatId, message.id),
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: Text(s.t('stop_sharing')),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -942,5 +1027,118 @@ class InvoiceView extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+// ------------------------------------------------------------------ albums
+
+/// Photos and videos of one media album laid out as a grid (2 side by side, 3 = 1 + 2, 4 = 2 x 2, more in rows of 3).
+class AlbumGrid extends StatelessWidget {
+  const AlbumGrid({super.key, required this.messages, required this.maxWidth});
+
+  /// Oldest first.
+  final List<td.Message> messages;
+  final double maxWidth;
+
+  static const _gap = 2.0;
+
+  List<List<td.Message>> _rows() {
+    final n = messages.length;
+    if (n <= 2) return [messages];
+    if (n == 3) return [messages.sublist(0, 1), messages.sublist(1)];
+    if (n == 4) return [messages.sublist(0, 2), messages.sublist(2)];
+    final rows = <List<td.Message>>[];
+    var i = 0;
+    // Rows of 3, but never leave a single item on the last row.
+    while (i < n) {
+      final remaining = n - i;
+      final take = remaining == 4 ? 2 : min(3, remaining);
+      rows.add(messages.sublist(i, i + take));
+      i += take;
+    }
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = messages.where((m) => m.content is td.MessagePhoto || m.content is td.MessageVideo).toList();
+    if (media.length != messages.length) {
+      // Document / audio albums are a plain vertical list.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [for (final m in messages) Padding(padding: const EdgeInsets.only(bottom: 4), child: MessageMedia(message: m, maxWidth: maxWidth))],
+      );
+    }
+    final rows = _rows();
+    return SizedBox(
+      width: maxWidth,
+      child: Column(
+        children: [
+          for (var r = 0; r < rows.length; r++)
+            Padding(
+              padding: EdgeInsets.only(bottom: r == rows.length - 1 ? 0 : _gap),
+              child: Row(
+                children: [
+                  for (var c = 0; c < rows[r].length; c++) ...[
+                    if (c > 0) const SizedBox(width: _gap),
+                    Expanded(
+                      child: SizedBox(
+                        // Square cells; a lone wide cell (top of a 3-item album) is shorter.
+                        height: rows[r].length == 1 ? maxWidth * 0.66 : maxWidth / rows[r].length,
+                        child: _AlbumTile(message: rows[r][c]),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AlbumTile extends StatelessWidget {
+  const _AlbumTile({required this.message});
+
+  final td.Message message;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (message.content) {
+      case td.MessagePhoto(:final photo):
+        final size = bestPhotoSize(photo, target: 600);
+        if (size == null) return const ColoredBox(color: Colors.black12);
+        return GestureDetector(
+          onTap: () => openPhotoViewer(context, bestPhotoSize(photo, target: 2560)!.photo, photo.minithumbnail),
+          child: TdImage(file: size.photo, minithumbnail: photo.minithumbnail, fit: BoxFit.cover),
+        );
+      case td.MessageVideo(:final video):
+        final thumb = video.thumbnail;
+        return GestureDetector(
+          onTap: () => openVideoPlayer(context, video.video),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (thumb != null && thumb.format is! td.ThumbnailFormatMpeg4)
+                TdImage(file: thumb.file, minithumbnail: video.minithumbnail, fit: BoxFit.cover)
+              else
+                const ColoredBox(color: Colors.black26),
+              const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 40)),
+              Positioned(
+                left: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+                  child: Text(formatDuration(Duration(seconds: video.duration)), style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+                ),
+              ),
+            ],
+          ),
+        );
+      default:
+        return const ColoredBox(color: Colors.black12);
+    }
   }
 }
