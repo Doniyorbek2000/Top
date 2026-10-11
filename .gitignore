@@ -31,3 +31,4 @@ server/**/__pycache__/
 server/.pytest_cache/
 server/.ruff_cache/
 dump.rdb
+mobile/test/failures/

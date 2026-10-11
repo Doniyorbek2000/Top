@@ -153,9 +153,24 @@ final connectionStateProvider = Provider<td.ConnectionState>((ref) {
   return watchListenable(ref, account.connectionState);
 });
 
+/// Plus Messenger-style tabs that filter the main list by chat type.
+const chatTypeTabs = ['type:private', 'type:group', 'type:channel', 'type:bot', 'type:unread'];
+
+bool _matchesType(TelegramAccount account, td.Chat chat, String type) => switch (type) {
+      'type:private' => account.privateUser(chat) != null && !account.isBot(account.privateUser(chat)),
+      'type:group' => account.isGroup(chat),
+      'type:channel' => account.isChannel(chat),
+      'type:bot' => account.isBot(account.privateUser(chat)),
+      'type:unread' => chat.unreadCount > 0 || chat.isMarkedAsUnread,
+      _ => true,
+    };
+
 final chatListProvider = Provider.family<List<td.Chat>, String>((ref, listKey) {
   final account = ref.watch(accountProvider);
   watchListenable(ref, account.chatListRevision);
+  if (listKey.startsWith('type:')) {
+    return account.chatList(const td.ChatListMain()).where((c) => _matchesType(account, c, listKey)).toList();
+  }
   return account.chatList(chatListFromKey(listKey));
 });
 
@@ -216,3 +231,9 @@ class OpenChatNotifier extends Notifier<int?> {
 }
 
 final openChatProvider = NotifierProvider<OpenChatNotifier, int?>(OpenChatNotifier.new);
+
+final storyFeedProvider = Provider<List<td.ChatActiveStories>>((ref) {
+  final account = ref.watch(accountProvider);
+  watchListenable(ref, account.storiesRevision);
+  return account.storyFeed();
+});

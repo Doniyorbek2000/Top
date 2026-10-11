@@ -28,10 +28,22 @@ Telegram'ning barcha chatlari, kanallari va guruhlari, ustiga Plus Messenger, Ni
 - Kontaktlar va telefon kontaktlarini sinxronlash
 - Sozlamalar: profil, maxfiylik (onlayn holat, raqam, rasm, bio, qo'ng'iroqlar, guruhga taklif), bloklanganlar, faol seanslar (tugatish bilan), bildirishnomalar
 
+- Bot klaviaturalari: inline tugmalar (callback, URL, login, nusxa olish, foydalanuvchi, switch-inline), oddiy reply-klaviatura, telefon raqam yoki joylashuv so'rovi, botni "BOSHLASH"
+- Mini App'lar (WebApp): asosiy tugma, orqaga tugmasi, popup, tema, havolalar, botga ma'lumot yuborish
+- Telegram Stars bilan to'lov (invoice)
+- Forum mavzulari: mavzular ro'yxati, mavzu ichidagi chat, mavzuga yozish
+- Hikoyalar (stories): bosh sahifadagi qator, rasm va video ko'rish (ghost rejimda ko'rilganlik yuborilmaydi)
+- Animatsion stikerlar: TGS (Lottie) va WebM (Android)
+- Ovozsiz yoki rejalashtirib yuborish, rejalashtirilgan xabarlar ro'yxati
+- Push-bildirishnomalar (Android, FCM) — Firebase konfiguratsiyasi qo'shilganda yoqiladi
+
 **Sado qo'shimchalari**
 - **Ghost rejim**: onlayn holat, "o'qildi" va "yozmoqda" yuborilmaydi
 - **Telegram AI** (TDLib 1.8.68): xabarni tarjima qilish, uzun xabarning qisqacha mazmuni, matndagi xatolarni tuzatish, uslub bilan qayta yozish, emoji qo'shish, ovozli xabarni matnga aylantirish
 - **Multi-akkaunt**: 5 tagacha hisob, menyudan bir zumda almashtiriladi
+- **Parol bilan qulflash**: 4 xonali PIN, avtomatik qulflash, xato urinishlarda kutish vaqti; qulf yoqilganda bildirishnomalarda matn ko'rsatilmaydi
+- **Chat turlari bo'yicha tablar** (Plus Messenger uslubida): shaxsiy, guruhlar, kanallar, botlar, o'qilmagan
+- Ovozli xabar va video tezligi (1x / 1.5x / 2x)
 - Ko'rinish: 7 ta asosiy rang, yorug' yoki qorong'i mavzu, matn hajmi, xabar burchaklari
 - 3 til: o'zbek, rus va ingliz
 - Enter bilan yuborish, tezkor reaksiyani tanlash, tarjima tilini tanlash
@@ -110,8 +122,14 @@ cd server && python3.13 -m venv .venv && .venv/bin/pip install -r requirements-d
 .venv/bin/pytest -q
 ```
 
+## Push-bildirishnomalar (Android)
+
+1. Firebase'da Android ilova yarating (`uz.sado.app`) va `google-services.json` ni `mobile/android/app/` ga qo'ying.
+2. Telegram push'larni sizning `api_id` uchun yetkazishi kerak. Buning uchun Telegram tomonida FCM sozlamasi talab qilinishi mumkin: [core.telegram.org/api/push-updates](https://core.telegram.org/api/push-updates) sahifasini tekshiring.
+3. Fayl bo'lmasa ilova odatdagidek ishlaydi, push o'chiq qoladi. Ilova ochiq yoki fonda bo'lganda lokal bildirishnomalar har doim ishlaydi.
+
 ## Hozircha yo'q
 
-- **Push-bildirishnomalar**: ilova yopiq bo'lganda xabar kelishi uchun Firebase/APNs loyihasi va TDLib `registerDevice` kerak. Hozir ilova ochiq yoki fonda turganida lokal bildirishnomalar ishlaydi.
-- **Ovozli va video qo'ng'iroqlar**: Telegram qo'ng'iroqlari `tgcalls`/WebRTC native integratsiyasini talab qiladi. Qo'ng'iroq yozuvlari ko'rsatiladi.
-- Hikoyalar (stories), animatsion (TGS/WebM) stikerlar (ularning o'rniga eskiz ko'rsatiladi), forum mavzulari, to'lovlar, bot inline klaviaturalari.
+- **Ovozli va video qo'ng'iroqlar**: Telegram qo'ng'iroqlari `tgcalls` (WebRTC) native kutubxonasini Android va iOS uchun yig'ib ulashni talab qiladi. Qo'ng'iroq yozuvlari ko'rsatiladi.
+- **iOS push**: Telegram'ning APNs payload'larini ko'rsatish uchun Notification Service Extension kerak; hozir iOS'da faqat ilova ochiq yoki fonda turganda bildirishnoma keladi.
+- Karta orqali to'lovlar (Stars ishlaydi), hikoya joylash, custom emoji, iOS'da WebM stikerlar (eskiz ko'rsatiladi).

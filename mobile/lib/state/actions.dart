@@ -115,12 +115,12 @@ extension ChatActions on TelegramAccount {
   Future<td.Chat> savedMessages() => openPrivateChat(myId);
 
   Future<void> sendTyping(int chatId, td.ChatAction? action) =>
-      send<td.Ok>(td.SendChatAction(chatId: chatId, topicId: null, businessConnectionId: null, action: action))
+      send<td.Ok>(td.SendChatAction(chatId: chatId, topicId: topicFor(chatId), businessConnectionId: null, action: action))
           .catchError((Object _) => const td.Ok());
 
   Future<void> saveDraft(int chatId, String text, {int? replyToMessageId}) => send<td.Ok>(td.SetChatDraftMessage(
         chatId: chatId,
-        topicId: null,
+        topicId: topicFor(chatId),
         draftMessage: text.trim().isEmpty
             ? null
             : td.DraftMessage(
@@ -134,17 +134,17 @@ extension ChatActions on TelegramAccount {
 
   // ------------------------------------------------------------------ sending
 
-  Future<td.Message> sendContent(int chatId, td.InputMessageContent content, {int? replyToId, bool silent = false}) =>
+  Future<td.Message> sendContent(int chatId, td.InputMessageContent content, {int? replyToId, bool silent = false, int? scheduleAt}) =>
       send<td.Message>(td.SendMessage(
         chatId: chatId,
-        topicId: null,
+        topicId: topicFor(chatId),
         replyTo: replyTo(replyToId),
-        options: sendOptions(silent: silent),
+        options: sendOptions(silent: silent, scheduleAt: scheduleAt),
         replyMarkup: null,
         inputMessageContent: content,
       ));
 
-  Future<td.Message> sendText(int chatId, String text, {int? replyToId, bool silent = false, bool disablePreview = false}) =>
+  Future<td.Message> sendText(int chatId, String text, {int? replyToId, bool silent = false, bool disablePreview = false, int? scheduleAt}) =>
       sendContent(
         chatId,
         td.InputMessageText(
@@ -157,6 +157,7 @@ extension ChatActions on TelegramAccount {
         ),
         replyToId: replyToId,
         silent: silent,
+        scheduleAt: scheduleAt,
       );
 
   Future<td.Message> sendPhoto(int chatId, String path, {String caption = '', int width = 0, int height = 0, int? replyToId}) =>
@@ -298,7 +299,7 @@ extension ChatActions on TelegramAccount {
   Future<void> forward(int fromChatId, List<int> ids, int toChatId, {bool hideSender = false}) =>
       send<td.Messages>(td.ForwardMessages(
         chatId: toChatId,
-        topicId: null,
+        topicId: topicFor(toChatId),
         fromChatId: fromChatId,
         messageIds: ids,
         options: _noOptions,
@@ -380,4 +381,98 @@ extension ChatActions on TelegramAccount {
 
   Future<void> recognizeSpeech(td.Message message) =>
       send<td.Ok>(td.RecognizeSpeech(chatId: message.chatId, messageId: message.id));
+}
+
+/// Bot interactions: inline/reply keyboard buttons, Mini Apps and Telegram Stars payments.
+extension BotActions on TelegramAccount {
+  /// The bot behind a message: the inline bot it was sent via, otherwise the sending user.
+  int botUserIdOf(td.Message message) {
+    if (message.viaBotUserId != 0) return message.viaBotUserId;
+    final sender = message.senderId;
+    return sender is td.MessageSenderUser ? sender.userId : 0;
+  }
+
+  Future<td.CallbackQueryAnswer> callbackAnswer(td.Message message, td.CallbackQueryPayload payload) =>
+      send<td.CallbackQueryAnswer>(td.GetCallbackQueryAnswer(chatId: message.chatId, messageId: message.id, payload: payload));
+
+  Future<td.LoginUrlInfo> loginUrlInfo(td.Message message, int buttonId) =>
+      send<td.LoginUrlInfo>(td.GetLoginUrlInfo(chatId: message.chatId, messageId: message.id, buttonId: buttonId));
+
+  Future<String> loginUrl(td.Message message, int buttonId, {required bool allowWriteAccess}) async =>
+      (await send<td.HttpUrl>(td.GetLoginUrl(
+        chatId: message.chatId,
+        messageId: message.id,
+        buttonId: buttonId,
+        allowWriteAccess: allowWriteAccess,
+      )))
+          .url;
+
+  /// Mini App launched from an inline button or the bot menu; must be closed with [closeWebApp].
+  Future<td.WebAppInfo> openWebApp(int chatId, int botUserId, String url, td.ThemeParameters theme, {int? replyToId}) =>
+      send<td.WebAppInfo>(td.OpenWebApp(
+        chatId: chatId,
+        botUserId: botUserId,
+        url: url,
+        topicId: null,
+        replyTo: replyTo(replyToId),
+        parameters: webAppParameters(theme),
+      ));
+
+  /// Mini App launched from a reply keyboard button (can send data back with [sendWebAppData]).
+  Future<String> webAppUrl(int botUserId, String url, td.ThemeParameters theme) async =>
+      (await send<td.WebAppUrl>(td.GetWebAppUrl(botUserId: botUserId, url: url, parameters: webAppParameters(theme)))).url;
+
+  Future<void> closeWebApp(int launchId) =>
+      send<td.Ok>(td.CloseWebApp(webAppLaunchId: launchId)).catchError((Object _) => const td.Ok());
+
+  Future<void> sendWebAppData(int botUserId, String buttonText, String data) =>
+      send<td.Ok>(td.SendWebAppData(botUserId: botUserId, buttonText: buttonText, data: data));
+
+  Future<td.PaymentForm> paymentForm(td.Message message, td.ThemeParameters theme) => send<td.PaymentForm>(td.GetPaymentForm(
+        inputInvoice: td.InputInvoiceMessage(chatId: message.chatId, messageId: message.id),
+        theme: theme,
+      ));
+
+  /// Pays an invoice in Telegram Stars (no card data involved; Telegram debits the user's Star balance).
+  Future<td.PaymentResult> payWithStars(td.Message message, int paymentFormId) => send<td.PaymentResult>(td.SendPaymentForm(
+        inputInvoice: td.InputInvoiceMessage(chatId: message.chatId, messageId: message.id),
+        paymentFormId: paymentFormId,
+        orderInfoId: '',
+        shippingOptionId: '',
+        credentials: null,
+        tipAmount: 0,
+      ));
+
+  Future<void> startBot(int botUserId, int chatId) =>
+      send<td.Message>(td.SendBotStartMessage(botUserId: botUserId, chatId: chatId, parameter: ''));
+}
+
+td.WebAppOpenParameters webAppParameters(td.ThemeParameters theme) =>
+    td.WebAppOpenParameters(theme: theme, applicationName: 'Sado', mode: const td.WebAppOpenModeFullSize());
+
+extension ForumActions on TelegramAccount {
+  Future<td.ForumTopics> forumTopics(int chatId, {int offsetDate = 0, int offsetMessageId = 0, int offsetTopicId = 0, String query = ''}) =>
+      send<td.ForumTopics>(td.GetForumTopics(
+        chatId: chatId,
+        query: query,
+        offsetDate: offsetDate,
+        offsetMessageId: offsetMessageId,
+        offsetForumTopicId: offsetTopicId,
+        limit: 50,
+      ));
+}
+
+extension ScheduledActions on TelegramAccount {
+  Future<List<td.Message>> scheduledMessages(int chatId) async =>
+      ((await send<td.Messages>(td.GetChatScheduledMessages(chatId: chatId))).messages ?? const <td.Message>[]).toList();
+
+  /// Sends a scheduled message right away (scheduling state null = now).
+  Future<void> sendScheduledNow(td.Message message) =>
+      send<td.Ok>(td.EditMessageSchedulingState(chatId: message.chatId, messageId: message.id, schedulingState: null));
+
+  Future<void> reschedule(td.Message message, int sendAt) => send<td.Ok>(td.EditMessageSchedulingState(
+        chatId: message.chatId,
+        messageId: message.id,
+        schedulingState: td.MessageSchedulingStateSendAtDate(sendDate: sendAt, repeatPeriod: 0),
+      ));
 }

@@ -8,13 +8,16 @@ import 'telegram.dart';
 
 /// Message list of one open chat. Messages are kept newest-first (for a reversed ListView).
 class ChatHistory extends ChangeNotifier {
-  ChatHistory(this.account, this.chatId, {required this.ghostMode}) {
+  ChatHistory(this.account, this.chatId, {required this.ghostMode, this.topicId}) {
     _subscription = account.messageEvents.listen(_onEvent);
     unawaited(account.send<td.Ok>(td.OpenChat(chatId: chatId)).catchError((Object _) => const td.Ok()));
   }
 
   final TelegramAccount account;
   final int chatId;
+
+  /// Forum topic shown by this history; null for the whole chat.
+  final int? topicId;
   bool ghostMode;
 
   final List<td.Message> messages = [];
@@ -45,7 +48,7 @@ class ChatHistory extends ChangeNotifier {
     final chat = account.chats[chatId];
     loading = true;
     try {
-      if (chat != null && chat.unreadCount > 0 && chat.lastReadInboxMessageId > 0) {
+      if (topicId == null && chat != null && chat.unreadCount > 0 && chat.lastReadInboxMessageId > 0) {
         // Open at the first unread message, like Telegram.
         final page = await _fetch(chat.lastReadInboxMessageId, -_pageSize ~/ 2, _pageSize);
         _replaceAll(page);
@@ -69,7 +72,7 @@ class ChatHistory extends ChangeNotifier {
 
   Future<void> loadSponsored() async {
     final chat = account.chats[chatId];
-    final eligible = chat != null && (account.isChannel(chat) || account.isBot(account.privateUser(chat)));
+    final eligible = chat != null && topicId == null && (account.isChannel(chat) || account.isBot(account.privateUser(chat)));
     if (!eligible) return;
     try {
       final result = await account.send<td.SponsoredMessages>(td.GetChatSponsoredMessages(chatId: chatId));
@@ -108,8 +111,11 @@ class ChatHistory extends ChangeNotifier {
   }
 
   Future<List<td.Message>> _fetch(int fromMessageId, int offset, int limit) async {
+    final topic = topicId;
     final result = await account.send<td.Messages>(
-      td.GetChatHistory(chatId: chatId, fromMessageId: fromMessageId, offset: offset, limit: limit, onlyLocal: false),
+      topic != null
+          ? td.GetForumTopicHistory(chatId: chatId, forumTopicId: topic, fromMessageId: fromMessageId, offset: offset, limit: limit)
+          : td.GetChatHistory(chatId: chatId, fromMessageId: fromMessageId, offset: offset, limit: limit, onlyLocal: false),
     );
     final list = (result.messages ?? const <td.Message>[]).toList()..sort((a, b) => b.id.compareTo(a.id));
     return list;
@@ -195,6 +201,7 @@ class ChatHistory extends ChangeNotifier {
   void _onEvent(td.Update update) {
     switch (update) {
       case td.UpdateNewMessage(:final message) when message.chatId == chatId:
+        if (!_inTopic(message)) return;
         if (hasNewer || messages.any((m) => m.id == message.id)) return;
         messages.insert(0, message);
       case td.UpdateMessageSendSucceeded(:final message, :final oldMessageId) when message.chatId == chatId:
@@ -203,8 +210,8 @@ class ChatHistory extends ChangeNotifier {
         _replace(oldMessageId, (_) => message);
       case td.UpdateMessageContent(chatId: final id, :final messageId, :final newContent) when id == chatId:
         _replace(messageId, (m) => m.copyWith(content: newContent));
-      case td.UpdateMessageEdited(chatId: final id, :final messageId, :final editDate) when id == chatId:
-        _replace(messageId, (m) => m.copyWith(editDate: editDate));
+      case td.UpdateMessageEdited(chatId: final id, :final messageId, :final editDate, :final replyMarkup) when id == chatId:
+        _replace(messageId, (m) => _withJson(m, {'edit_date': editDate, 'reply_markup': replyMarkup?.toJson()}));
       case td.UpdateMessageInteractionInfo(chatId: final id, :final messageId, :final interactionInfo) when id == chatId:
         _replace(messageId, (m) => _withJson(m, {'interaction_info': interactionInfo?.toJson()}));
       case td.UpdateMessageIsPinned(chatId: final id, :final messageId, :final isPinned) when id == chatId:
@@ -217,6 +224,13 @@ class ChatHistory extends ChangeNotifier {
         return;
     }
     _notify();
+  }
+
+  bool _inTopic(td.Message message) {
+    final topic = topicId;
+    if (topic == null) return true;
+    final messageTopic = message.topicId;
+    return messageTopic is td.MessageTopicForum && messageTopic.forumTopicId == topic;
   }
 
   static td.Message _withJson(td.Message message, Map<String, dynamic> changes) =>

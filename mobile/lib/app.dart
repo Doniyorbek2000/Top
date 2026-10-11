@@ -5,7 +5,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 
+import 'core/app_lock.dart';
 import 'core/notifications.dart';
+import 'core/push.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_screens.dart';
 import 'features/chat/chat_screen.dart';
@@ -40,7 +42,7 @@ class SadoApp extends ConsumerWidget {
       ],
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(settings.textScale.clamp(0.85, 1.2))),
-        child: child!,
+        child: AppLockGate(child: child!),
       ),
       home: const AuthGate(),
     );
@@ -127,6 +129,7 @@ class _SessionScopeState extends ConsumerState<_SessionScope> with WidgetsBindin
     };
     unawaited(MessageNotifier.instance.initialize());
     _messages = _account.messageEvents.listen(_onMessageEvent);
+    unawaited(PushService.instance.register(_account));
   }
 
   void _onMessageEvent(td.Update update) {
@@ -143,7 +146,8 @@ class _SessionScopeState extends ConsumerState<_SessionScope> with WidgetsBindin
       account: _account,
       message: message,
       strings: Strings(settings.localeCode),
-      showPreview: settings.messagePreview,
+      // While a passcode is set, notifications never show message text.
+      showPreview: settings.messagePreview && !ref.read(appLockProvider).enabled,
     ));
   }
 

@@ -27,6 +27,7 @@ class AppSettings {
     this.messagePreview = true,
     this.bubbleRadius = 18,
     this.showTranslateButton = true,
+    this.chatTypeTabs = false,
   });
 
   final ThemeMode themeMode;
@@ -44,6 +45,9 @@ class AppSettings {
   final double bubbleRadius;
   final bool showTranslateButton;
 
+  /// Extra tabs filtering chats by type (users, groups, channels, bots, unread).
+  final bool chatTypeTabs;
+
   Color get accent => accentPalette[accentIndex.clamp(0, accentPalette.length - 1)];
 
   AppSettings copyWith({
@@ -59,6 +63,7 @@ class AppSettings {
     bool? messagePreview,
     double? bubbleRadius,
     bool? showTranslateButton,
+    bool? chatTypeTabs,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -73,6 +78,7 @@ class AppSettings {
         messagePreview: messagePreview ?? this.messagePreview,
         bubbleRadius: bubbleRadius ?? this.bubbleRadius,
         showTranslateButton: showTranslateButton ?? this.showTranslateButton,
+        chatTypeTabs: chatTypeTabs ?? this.chatTypeTabs,
       );
 }
 
@@ -99,6 +105,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       messagePreview: _prefs.getBool('messagePreview') ?? true,
       bubbleRadius: _prefs.getDouble('bubbleRadius') ?? 18,
       showTranslateButton: _prefs.getBool('showTranslateButton') ?? true,
+      chatTypeTabs: _prefs.getBool('chatTypeTabs') ?? false,
     );
   }
 
@@ -160,6 +167,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setBubbleRadius(double value) {
     _prefs.setDouble('bubbleRadius', value);
     state = state.copyWith(bubbleRadius: value);
+  }
+
+  void setChatTypeTabs(bool value) {
+    _prefs.setBool('chatTypeTabs', value);
+    state = state.copyWith(chatTypeTabs: value);
   }
 
   void setShowTranslateButton(bool value) {

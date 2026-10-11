@@ -18,17 +18,23 @@ import '../../state/telegram.dart';
 import '../../widgets/common.dart';
 import '../home/home_screen.dart';
 import '../profile/chat_info_screen.dart';
+import 'bot_keyboard.dart';
 import 'composer.dart';
 import 'forward_picker.dart';
 import 'message_bubble.dart';
 import 'message_content.dart';
+import 'scheduled_screen.dart';
 import 'sponsored_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, required this.chatId, this.initialMessageId, this.debugHistory});
+  const ChatScreen({super.key, required this.chatId, this.initialMessageId, this.topicId, this.topicName, this.debugHistory});
 
   final int chatId;
   final int? initialMessageId;
+
+  /// Forum topic to show instead of the whole chat.
+  final int? topicId;
+  final String? topicName;
 
   /// Pre-filled history for screenshot tests; skips loading from TDLib.
   @visibleForTesting
@@ -49,13 +55,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   td.Message? _pinned;
   int? _highlighted;
   bool _showScrollDown = false;
+  bool _replyKeyboardHidden = false;
+  int? _seenMarkupId;
+  final _composerKey = GlobalKey<ComposerState>();
   late final OpenChatNotifier _openChat = ref.read(openChatProvider.notifier);
 
   @override
   void initState() {
     super.initState();
     openChatFromContent = (context, chatId) => openChat(context, chatId);
-    _history = widget.debugHistory ?? ChatHistory(_account, widget.chatId, ghostMode: ref.read(settingsProvider).ghostMode);
+    final topicId = widget.topicId;
+    if (topicId != null) _account.activeTopics[widget.chatId] = topicId;
+    _history = widget.debugHistory ??
+        ChatHistory(_account, widget.chatId, ghostMode: ref.read(settingsProvider).ghostMode, topicId: topicId);
     _history.addListener(_onHistory);
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _openChat.set(widget.chatId));
@@ -66,6 +78,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await _history.loadInitial();
     if (widget.initialMessageId != null) await _jumpTo(widget.initialMessageId!);
     await _refreshPinned();
+    await _loadReplyMarkup();
+  }
+
+  Future<void> _loadReplyMarkup() async {
+    final chat = _account.chats[widget.chatId];
+    if (chat == null || chat.replyMarkupMessageId == 0 || _account.replyMarkupMessages.containsKey(chat.id)) return;
+    try {
+      final message = await _account.send<td.Message>(td.GetMessage(chatId: chat.id, messageId: chat.replyMarkupMessageId));
+      _account.replyMarkupMessages[chat.id] = message;
+      if (mounted) setState(() {});
+    } on TdException catch (error) {
+      debugPrint('reply markup unavailable: $error');
+    }
+  }
+
+  void _insertText(String text) => _composerKey.currentState?.setText(text);
+
+  Future<void> _sendKeyboardText(td.Chat chat, td.Message markupMessage, String text) async {
+    // In groups the answer replies to the keyboard message so the bot knows which keyboard was used.
+    final replyId = _account.isGroup(chat) ? markupMessage.id : null;
+    await guard(context, () => _account.sendText(chat.id, text, replyToId: replyId));
+    unawaited(_scrollToBottom());
   }
 
   Future<void> _refreshPinned() async {
@@ -88,6 +122,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    if (widget.topicId != null && _account.activeTopics[widget.chatId] == widget.topicId) {
+      _account.activeTopics.remove(widget.chatId);
+    }
     _openChat.set(null);
     _history
       ..removeListener(_onHistory)
@@ -343,6 +380,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
     }
     final selecting = _selected.isNotEmpty;
+    final markupMessage = _account.replyMarkupMessages[chat.id];
+    if (markupMessage?.id != _seenMarkupId) {
+      // A new keyboard from the bot is shown again even if the previous one was hidden.
+      _seenMarkupId = markupMessage?.id;
+      _replyKeyboardHidden = false;
+    }
+    final replyKeyboard = switch (markupMessage?.replyMarkup) {
+      final td.ReplyMarkupShowKeyboard keyboard when keyboard.rows.isNotEmpty => keyboard,
+      _ => null,
+    };
+    final showStart = _history.initialized && _history.messages.isEmpty && _account.isBot(_account.privateUser(chat));
     return PopScope(
       canPop: !selecting,
       onPopInvokedWithResult: (didPop, _) {
@@ -359,6 +407,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 child: Stack(
                   children: [
                     _messageList(chat),
+                    if (replyKeyboard != null && !selecting)
+                      Positioned(
+                        left: 12,
+                        bottom: 12,
+                        child: FloatingActionButton.small(
+                          heroTag: 'bot_keyboard',
+                          tooltip: s.t('bot_keyboard'),
+                          backgroundColor: Theme.of(context).colorScheme.surface,
+                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          onPressed: () => setState(() => _replyKeyboardHidden = !_replyKeyboardHidden),
+                          child: Icon(_replyKeyboardHidden ? Icons.keyboard_rounded : Icons.keyboard_hide_rounded),
+                        ),
+                      ),
                     if (_showScrollDown)
                       Positioned(
                         right: 12,
@@ -379,8 +440,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
             ),
-            if (!selecting)
+            if (!selecting && replyKeyboard != null && markupMessage != null && !_replyKeyboardHidden)
+              ReplyKeyboardPanel(
+                chat: chat,
+                markupMessage: markupMessage,
+                keyboard: replyKeyboard,
+                onSendText: (text) => _sendKeyboardText(chat, markupMessage, text),
+                onHide: () => setState(() => _replyKeyboardHidden = true),
+              ),
+            if (!selecting && showStart)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    onPressed: () => guard(context, () => _account.startBot(_account.privateUser(chat)!.id, chat.id)),
+                    child: Text(s.t('bot_start')),
+                  ),
+                ),
+              )
+            else if (!selecting)
               Composer(
+                key: _composerKey,
                 chat: chat,
                 replyTo: _replyTo,
                 editing: _editing,
@@ -397,7 +479,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   PreferredSizeWidget _chatBar(td.Chat chat, Strings s) {
     final account = _account;
     final action = chatActionText(chat, account, s);
-    final subtitle = action ?? chatSubtitle(chat, account, s);
+    final subtitle = widget.topicName != null ? chatTitle(chat, account, s) : (action ?? chatSubtitle(chat, account, s));
     final muted = account.isMuted(chat);
     return AppBar(
       titleSpacing: 0,
@@ -411,7 +493,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(chatTitle(chat, account, s), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17)),
+                  Text(widget.topicName ?? chatTitle(chat, account, s), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17)),
                   if (subtitle.isNotEmpty)
                     Text(
                       subtitle,
@@ -431,6 +513,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             switch (value) {
               case 'mute':
                 await guard(context, () => account.setMuted(chat, muted ? 0 : muteForever));
+              case 'scheduled':
+                await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ScheduledMessagesScreen(chatId: chat.id)));
               case 'clear':
                 final ok = await confirm(context, title: s.t('clear_history'), message: s.t('clear_history_confirm'), destructive: true);
                 if (ok && mounted) await guard(context, () => account.clearHistory(chat));
@@ -449,6 +533,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           },
           itemBuilder: (context) => [
             PopupMenuItem(value: 'mute', child: Text(s.t(muted ? 'unmute' : 'mute'))),
+            if (chat.hasScheduledMessages) PopupMenuItem(value: 'scheduled', child: Text(s.t('scheduled_messages'))),
             PopupMenuItem(value: 'clear', child: Text(s.t('clear_history'))),
             PopupMenuItem(value: 'delete', child: Text(s.t(account.privateUser(chat) != null ? 'delete_chat' : 'leave'))),
           ],
@@ -534,6 +619,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             },
             onLongPress: () => _selected.isNotEmpty ? _toggleSelected(message) : _showMessageMenu(message),
             onReplyTap: _jumpTo,
+            onInsertText: _insertText,
           );
         }
         return Column(

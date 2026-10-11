@@ -10,6 +10,7 @@ import '../../state/actions.dart';
 import '../../state/providers.dart';
 import '../../state/settings.dart';
 import '../../widgets/common.dart';
+import 'bot_keyboard.dart';
 import 'message_content.dart';
 
 /// Replied-to message, fetched on demand.
@@ -67,6 +68,7 @@ class MessageBubble extends ConsumerWidget {
     required this.onTap,
     required this.onLongPress,
     required this.onReplyTap,
+    this.onInsertText,
   });
 
   final td.Message message;
@@ -77,6 +79,7 @@ class MessageBubble extends ConsumerWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final void Function(int messageId) onReplyTap;
+  final InsertText? onInsertText;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -199,7 +202,20 @@ class MessageBubble extends ConsumerWidget {
                     ? UserAvatar(userId: (message.senderId as td.MessageSenderUser).userId, size: 34, showOnline: false)
                     : null,
               ),
-            Flexible(child: bubble),
+            Flexible(
+              child: switch (message.replyMarkup) {
+                td.ReplyMarkupInlineKeyboard(:final rows) when rows.isNotEmpty => Column(
+                      crossAxisAlignment: outgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        bubble,
+                        const SizedBox(height: 2),
+                        InlineKeyboardView(message: message, rows: rows, maxWidth: maxWidth, onInsertText: onInsertText),
+                      ],
+                    ),
+                _ => bubble,
+              },
+            ),
           ],
         ),
       ),

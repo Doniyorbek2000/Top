@@ -60,6 +60,11 @@ dependencies:
   tdlib_ex: 0.44.0
   ffi: ^2.2.0
   qr_flutter: ^4.1.0
+  webview_flutter: ^4.14.1
+  lottie: ^3.6.1
+  crypto: ^3.0.7
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
 
 dev_dependencies:
   flutter_test:

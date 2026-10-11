@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
 
@@ -7,9 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:lottie/lottie.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
@@ -17,6 +20,7 @@ import '../../l10n/strings.dart';
 import '../../state/actions.dart';
 import '../../state/providers.dart';
 import '../../widgets/common.dart';
+import 'bot_keyboard.dart';
 import 'media_viewers.dart';
 
 /// Picks the photo size best suited for a bubble (around 800px wide).
@@ -196,6 +200,7 @@ class MessageMedia extends ConsumerWidget {
       td.MessageContact(:final contact) => _ContactView(contact: contact),
       td.MessagePoll(:final poll) => PollView(message: message, poll: poll),
       td.MessageCall(:final isVideo, :final duration) => _CallView(isVideo: isVideo, duration: duration, outgoing: message.isOutgoing),
+      td.MessageInvoice() => InvoiceView(message: message),
       td.MessageAnimatedEmoji(:final emoji) || td.MessageDice(:final emoji) =>
         Text(emoji, style: const TextStyle(fontSize: 56)),
       _ => const SizedBox.shrink(),
@@ -387,23 +392,97 @@ final _fileStateProvider = StreamProvider.autoDispose.family<td.File, int>((ref,
   return ref.watch(accountProvider).fileUpdates(fileId);
 });
 
-class _StickerView extends StatelessWidget {
+class _StickerView extends ConsumerWidget {
   const _StickerView({required this.sticker});
 
   final td.Sticker sticker;
 
-  @override
-  Widget build(BuildContext context) {
-    const size = 160.0;
-    // Static WebP stickers render directly; animated (TGS/WebM) stickers show their thumbnail.
-    if (sticker.format is td.StickerFormatWebp) {
-      return TdImage(file: sticker.sticker, width: size, height: size, fit: BoxFit.contain);
-    }
+  static const size = 160.0;
+
+  Widget _fallback() {
     final thumb = sticker.thumbnail;
     if (thumb != null && thumb.format is! td.ThumbnailFormatTgs && thumb.format is! td.ThumbnailFormatWebm) {
       return TdImage(file: thumb.file, width: size, height: size, fit: BoxFit.contain);
     }
     return SizedBox.square(dimension: size, child: Center(child: Text(sticker.emoji, style: const TextStyle(fontSize: 96))));
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final format = sticker.format;
+    if (format is td.StickerFormatWebp) {
+      return TdImage(file: sticker.sticker, width: size, height: size, fit: BoxFit.contain);
+    }
+    // WebM (VP9 with alpha) plays through ExoPlayer on Android; AVPlayer on iOS cannot decode it.
+    if (format is td.StickerFormatWebm && !Platform.isAndroid) return _fallback();
+    final file = ref.watch(fileProvider(sticker.sticker.id)).value ?? sticker.sticker;
+    if (!file.local.isDownloadingCompleted || file.local.path.isEmpty) return _fallback();
+    final path = file.local.path;
+    return RepaintBoundary(
+      child: SizedBox.square(
+        dimension: size,
+        child: format is td.StickerFormatTgs
+            ? Lottie.file(
+                File(path),
+                decoder: LottieComposition.decodeGZip,
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                repeat: true,
+                errorBuilder: (_, _, _) => _fallback(),
+              )
+            : _LoopingVideo(path: path, fallback: _fallback()),
+      ),
+    );
+  }
+}
+
+/// Silent looping video for WebM stickers.
+class _LoopingVideo extends StatefulWidget {
+  const _LoopingVideo({required this.path, required this.fallback});
+
+  final String path;
+  final Widget fallback;
+
+  @override
+  State<_LoopingVideo> createState() => _LoopingVideoState();
+}
+
+class _LoopingVideoState extends State<_LoopingVideo> {
+  late final VideoPlayerController _controller = VideoPlayerController.file(File(widget.path));
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_start());
+  }
+
+  Future<void> _start() async {
+    try {
+      await _controller.initialize();
+      await _controller.setVolume(0);
+      await _controller.setLooping(true);
+      await _controller.play();
+      if (mounted) setState(() => _ready = true);
+    } on Object catch (error) {
+      debugPrint('webm sticker failed: $error');
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_controller.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) return widget.fallback;
+    return FittedBox(
+      fit: BoxFit.contain,
+      child: SizedBox(width: _controller.value.size.width, height: _controller.value.size.height, child: VideoPlayer(_controller)),
+    );
   }
 }
 
@@ -538,6 +617,13 @@ class VoicePlayback {
   static final VoicePlayback instance = VoicePlayback._();
   final AudioPlayer player = AudioPlayer();
   final ValueNotifier<int?> currentFileId = ValueNotifier(null);
+  final ValueNotifier<double> speed = ValueNotifier(1.0);
+
+  Future<void> cycleSpeed() async {
+    const speeds = [1.0, 1.5, 2.0];
+    speed.value = speeds[(speeds.indexOf(speed.value) + 1) % speeds.length];
+    await player.setSpeed(speed.value);
+  }
 
   Future<void> toggle(int fileId, String path) async {
     if (currentFileId.value == fileId) {
@@ -620,6 +706,21 @@ class VoiceNoteView extends ConsumerWidget {
                         );
                       },
                     ),
+                    if (isCurrent)
+                      ValueListenableBuilder<double>(
+                        valueListenable: playback.speed,
+                        builder: (context, speed, _) => InkWell(
+                          onTap: playback.cycleSpeed,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            margin: const EdgeInsets.only(left: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(border: Border.all(color: primary), borderRadius: BorderRadius.circular(8)),
+                            child: Text('${speed == speed.roundToDouble() ? speed.toInt() : speed}x',
+                                style: TextStyle(color: primary, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ),
                     IconButton(
                       tooltip: context.t('speech_to_text'),
                       visualDensity: VisualDensity.compact,
@@ -779,4 +880,67 @@ class PollView extends ConsumerWidget {
 
 extension ChatColorsFor on BuildContext {
   Color metaColor(bool outgoing) => outgoing ? chatColors.outgoingMeta : chatColors.incomingMeta;
+}
+
+// ------------------------------------------------------------------ invoices
+
+String formatInvoiceAmount(int amount, String currency) {
+  if (currency == 'XTR') return '$amount ⭐';
+  // Telegram amounts are in the smallest currency unit; most currencies use two decimals.
+  const zeroDecimal = {'JPY', 'KRW', 'UZS', 'VND', 'CLP', 'ISK', 'UGX', 'XAF', 'XOF'};
+  final value = zeroDecimal.contains(currency) ? amount.toString() : (amount / 100).toStringAsFixed(2);
+  return '$value $currency';
+}
+
+class InvoiceView extends ConsumerWidget {
+  const InvoiceView({super.key, required this.message});
+
+  final td.Message message;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final invoice = message.content as td.MessageInvoice;
+    final info = invoice.productInfo;
+    final photo = info.photo;
+    final size = photo == null ? null : bestPhotoSize(photo, target: 600);
+    final hasBuyButton = switch (message.replyMarkup) {
+      td.ReplyMarkupInlineKeyboard(:final rows) => rows.expand((r) => r).any((b) => b.type is td.InlineKeyboardButtonTypeBuy),
+      _ => false,
+    };
+    final paid = invoice.receiptMessageId != 0;
+    return SizedBox(
+      width: 260,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (size != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: TdImage(file: size.photo, minithumbnail: photo!.minithumbnail, width: 260, height: 160),
+            ),
+          const SizedBox(height: 6),
+          Text(info.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15.5)),
+          if (info.description.text.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(info.description.text)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(
+                formatInvoiceAmount(invoice.totalAmount, invoice.currency),
+                style: TextStyle(fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.primary),
+              ),
+              if (invoice.isTest) Text('  ${context.t('test_invoice')}', style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
+            ],
+          ),
+          if (!hasBuyButton && !paid)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FilledButton.tonal(
+                onPressed: () => payInvoice(context, ref, message),
+                child: Text(context.t('pay')),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

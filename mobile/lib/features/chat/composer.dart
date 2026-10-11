@@ -129,7 +129,7 @@ class ComposerState extends ConsumerState<Composer> {
     }
   }
 
-  Future<void> _send() async {
+  Future<void> _send({bool silent = false, int? scheduleAt}) async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     final account = ref.read(accountProvider);
@@ -151,11 +151,50 @@ class ComposerState extends ConsumerState<Composer> {
     // Telegram limits a message to 4096 characters; split longer texts.
     for (var start = 0; start < text.length; start += 4096) {
       final part = text.substring(start, min(text.length, start + 4096));
-      final sent = await guard(context, () => account.sendText(widget.chat.id, part, replyToId: start == 0 ? replyId : null));
+      final sent = await guard(
+        context,
+        () => account.sendText(widget.chat.id, part, replyToId: start == 0 ? replyId : null, silent: silent, scheduleAt: scheduleAt),
+      );
       if (sent == null) {
         if (mounted && _controller.text.isEmpty) setText(text);
         return;
       }
+    }
+  }
+
+  /// Long-press on send: silent or scheduled sending.
+  Future<void> _sendOptions() async {
+    final s = context.s;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.notifications_off_rounded),
+              title: Text(s.t('send_silent')),
+              onTap: () => Navigator.pop(context, 'silent'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.schedule_send_rounded),
+              title: Text(s.t('send_scheduled')),
+              onTap: () => Navigator.pop(context, 'schedule'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'silent') {
+      await _send(silent: true);
+      return;
+    }
+    final at = await pickScheduleTime(context);
+    if (at != null && mounted) {
+      await _send(scheduleAt: at);
+      if (mounted) showToast(context, s.t('message_scheduled'));
     }
   }
 
@@ -484,9 +523,12 @@ class ComposerState extends ConsumerState<Composer> {
         if (!_hasText && widget.editing == null)
           IconButton(icon: Icon(Icons.attach_file_rounded, color: theme.hintColor), onPressed: _attach),
         if (_hasText || widget.editing != null)
-          IconButton(
-            icon: Icon(widget.editing != null ? Icons.check_circle_rounded : Icons.send_rounded, color: theme.colorScheme.primary),
-            onPressed: _send,
+          GestureDetector(
+            onLongPress: widget.editing == null ? _sendOptions : null,
+            child: IconButton(
+              icon: Icon(widget.editing != null ? Icons.check_circle_rounded : Icons.send_rounded, color: theme.colorScheme.primary),
+              onPressed: _send,
+            ),
           )
         else
           GestureDetector(
@@ -709,4 +751,16 @@ class _PollDialogState extends State<_PollDialog> {
       ],
     );
   }
+}
+
+/// Date + time picker for scheduled messages; returns a unix timestamp in the future or null.
+Future<int?> pickScheduleTime(BuildContext context) async {
+  final now = DateTime.now();
+  final date = await showDatePicker(context: context, firstDate: now, lastDate: now.add(const Duration(days: 365)), initialDate: now);
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 10))));
+  if (time == null) return null;
+  final at = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  if (!at.isAfter(now.add(const Duration(seconds: 30)))) return null;
+  return at.millisecondsSinceEpoch ~/ 1000;
 }

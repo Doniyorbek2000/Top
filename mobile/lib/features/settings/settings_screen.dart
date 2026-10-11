@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:tdlib_ex/td_api.dart' as td;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_lock.dart';
 import '../../core/config.dart';
 import '../../core/formatters.dart';
 import '../../l10n/strings.dart';
@@ -92,6 +93,13 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           SwitchListTile(
+            secondary: const Icon(Icons.tab_rounded),
+            title: Text(s.t('chat_type_tabs')),
+            subtitle: Text(s.t('chat_type_tabs_hint')),
+            value: settings.chatTypeTabs,
+            onChanged: notifier.setChatTypeTabs,
+          ),
+          SwitchListTile(
             secondary: const Icon(Icons.keyboard_return_rounded),
             title: Text(s.t('send_by_enter')),
             value: settings.sendByEnter,
@@ -108,6 +116,11 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.lock_rounded),
             title: Text(s.t('privacy')),
             onTap: () => _push(context, const PrivacyScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.pin_rounded),
+            title: Text(s.t('passcode_lock')),
+            onTap: () => _push(context, const PasscodeSettingsScreen()),
           ),
           ListTile(
             leading: const Icon(Icons.devices_rounded),

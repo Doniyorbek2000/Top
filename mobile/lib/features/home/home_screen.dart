@@ -11,12 +11,20 @@ import '../../state/settings.dart';
 import '../../state/telegram.dart';
 import '../../widgets/common.dart';
 import '../chat/chat_screen.dart';
+import '../chat/topics_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../search/search_screen.dart';
+import '../stories/stories.dart';
 import '../settings/settings_screen.dart';
 import 'chat_tile.dart';
 
 void openChat(BuildContext context, int chatId, {int? messageId}) {
+  final account = ProviderScope.containerOf(context, listen: false).read(accountProvider);
+  final chat = account.chats[chatId];
+  if (messageId == null && chat != null && account.isForum(chat)) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TopicsScreen(chatId: chatId)));
+    return;
+  }
   Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChatScreen(chatId: chatId, initialMessageId: messageId)));
 }
 
@@ -29,6 +37,8 @@ class HomeScreen extends ConsumerWidget {
     final s = context.s;
     final tabs = <(String, String)>[
       ('main', s.t('all_chats')),
+      if (ref.watch(settingsProvider.select((st) => st.chatTypeTabs)))
+        for (final type in chatTypeTabs) (type, s.t('tab_${type.substring(5)}')),
       for (final folder in folders) ('folder:${folder.id}', folder.name.text.text),
     ];
     return DefaultTabController(
@@ -172,7 +182,7 @@ class _ChatListViewState extends ConsumerState<ChatListView> with AutomaticKeepA
       return EmptyState(icon: Icons.forum_rounded, title: s.t('no_chats'), subtitle: s.t('no_chats_hint'));
     }
     final archiveRow = archived.isNotEmpty ? 1 : 0;
-    return NotificationListener<ScrollNotification>(
+    final list = NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification.metrics.extentAfter < 800) _loadMore();
         return false;
@@ -187,6 +197,8 @@ class _ChatListViewState extends ConsumerState<ChatListView> with AutomaticKeepA
         },
       ),
     );
+    if (widget.listKey != 'main') return list;
+    return Column(children: [const StoriesBar(), Expanded(child: list)]);
   }
 }
 

@@ -125,6 +125,16 @@ class _VideoPlayerScreenState extends ConsumerState<_VideoPlayerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         actions: [
+          if (controller != null)
+            TextButton(
+              onPressed: () {
+                const speeds = [1.0, 1.25, 1.5, 2.0, 0.5];
+                final next = speeds[(speeds.indexOf(controller.value.playbackSpeed) + 1) % speeds.length];
+                unawaited(controller.setPlaybackSpeed(next));
+                setState(() {});
+              },
+              child: Text('${controller.value.playbackSpeed}x', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
           if (current.local.isDownloadingCompleted)
             IconButton(
               icon: const Icon(Icons.share_rounded),

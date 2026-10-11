@@ -55,6 +55,30 @@ class TelegramAccount {
   List<td.ChatFolderInfo> folders = const [];
   final Map<String, int> unreadCounts = {};
 
+  /// Active stories per poster chat (updateChatActiveStories).
+  final Map<int, td.ChatActiveStories> activeStories = {};
+  final storiesRevision = ValueNotifier<int>(0);
+
+  /// Chats with active stories in the main story list, newest first.
+  List<td.ChatActiveStories> storyFeed() {
+    final feed = activeStories.values.where((s) => s.stories.isNotEmpty && s.list is td.StoryListMain && s.order != 0).toList()
+      ..sort((a, b) => b.order.compareTo(a.order));
+    return feed;
+  }
+
+  /// Forum topic currently open per chat; messages sent to that chat go into the topic.
+  final Map<int, int> activeTopics = {};
+
+  td.MessageTopic? topicFor(int chatId) {
+    final topic = activeTopics[chatId];
+    return topic == null ? null : td.MessageTopicForum(forumTopicId: topic);
+  }
+
+  bool isForum(td.Chat chat) => supergroupOf(chat)?.isForum ?? false;
+
+  /// Message carrying the current bot reply keyboard of a chat (updateChatReplyMarkup).
+  final Map<int, td.Message> replyMarkupMessages = {};
+
   /// Writing styles offered by Telegram's AI text composer (updateTextCompositionStyles).
   List<td.TextCompositionStyle> compositionStyles = const [];
 
@@ -335,11 +359,23 @@ class TelegramAccount {
       case td.UpdateChatDraftMessage(:final chatId, :final draftMessage, :final positions):
         _updateChat(chatId, (c) => _patch(c, {'draft_message': draftMessage?.toJson()}));
         _setPositions(chatId, positions);
+      case td.UpdateChatHasScheduledMessages(:final chatId, :final hasScheduledMessages):
+        _updateChat(chatId, (c) => c.copyWith(hasScheduledMessages: hasScheduledMessages), affectsList: false);
       case td.UpdateChatIsMarkedAsUnread(:final chatId, :final isMarkedAsUnread):
         _updateChat(chatId, (c) => c.copyWith(isMarkedAsUnread: isMarkedAsUnread));
       case td.UpdateChatOnlineMemberCount(:final chatId, :final onlineMemberCount):
         onlineMemberCounts[chatId] = onlineMemberCount;
         _markChat(chatId, affectsList: false);
+      case td.UpdateChatActiveStories(:final activeStories):
+        this.activeStories[activeStories.chatId] = activeStories;
+        storiesRevision.value++;
+      case td.UpdateChatReplyMarkup(:final chatId, :final replyMarkupMessage):
+        if (replyMarkupMessage == null) {
+          replyMarkupMessages.remove(chatId);
+        } else {
+          replyMarkupMessages[chatId] = replyMarkupMessage;
+        }
+        _updateChat(chatId, (c) => c.copyWith(replyMarkupMessageId: replyMarkupMessage?.id ?? 0), affectsList: false);
       case td.UpdateChatAction(:final chatId, :final senderId, :final action):
         _onChatAction(chatId, senderKey(senderId), action);
       case td.UpdateUser(:final user):
@@ -457,6 +493,23 @@ class TelegramAccount {
       await loadChats(const td.ChatListMain(), limit: 50);
     } on TdException catch (error) {
       debugPrint('initial loadChats failed: $error');
+    }
+    await loadStories();
+  }
+
+  bool _storiesFullyLoaded = false;
+
+  /// Loads the main story list; TDLib answers 404 once every chat with stories was sent.
+  Future<void> loadStories() async {
+    if (_storiesFullyLoaded) return;
+    try {
+      await client.send<td.Ok>(const td.LoadActiveStories(storyList: td.StoryListMain()));
+    } on TdException catch (error) {
+      if (error.code == 404) {
+        _storiesFullyLoaded = true;
+      } else {
+        debugPrint('loadActiveStories failed: $error');
+      }
     }
   }
 

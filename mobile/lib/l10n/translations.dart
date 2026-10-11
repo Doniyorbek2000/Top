@@ -134,6 +134,32 @@ const _uz = <String, String>{
   'err_AICOMPOSE_FLOOD_PREMIUM': 'AI limiti tugadi — davom etish uchun Telegram Premium kerak',
   'err_PREMIUM_ACCOUNT_REQUIRED': 'Bu imkoniyat uchun Telegram Premium kerak',
   'err_FLOOD_WAIT': "Juda ko'p urinish. Birozdan so'ng qayta urinib ko'ring.",
+  // bots, mini apps, payments
+  'bot_keyboard': 'Bot klaviaturasi', 'bot_start': 'BOSHLASH', 'close': 'Yopish', 'enter_password': 'Parolni kiriting',
+  'open_link': 'Havolani ochish', 'reload': 'Qayta yuklash',
+  'login_url_title': 'Saytga kirish', 'login_url_text': '{domain} saytiga Telegram hisobingiz bilan kirasizmi?',
+  'login_url_write': '{bot} sizga xabar yuborishiga ruxsat berish', 'login_url_confirm': 'Kirish',
+  'webapp_close_title': 'Ilovani yopish', 'webapp_close_confirm': "O'zgarishlar saqlanmasligi mumkin. Yopilsinmi?",
+  'share_phone_title': 'Raqamni ulashish', 'share_phone_text': '{bot} telefon raqamingizni so\'ramoqda. Ulashilsinmi?',
+  'share_location_title': 'Joylashuvni ulashish', 'share_location_text': '{bot} joylashuvingizni so\'ramoqda. Ulashilsinmi?',
+  'pay': "To'lash", 'test_invoice': '(test)', 'stars_pay_confirm': '{bot} uchun {count} ⭐ Telegram Stars to\'lansinmi?',
+  'payment_done': "To'lov amalga oshirildi", 'payment_card_unsupported': "Karta orqali to'lov hozircha qo'llab-quvvatlanmaydi. Telegram Stars bilan to'lang yoki rasmiy Telegram ilovasidan foydalaning.",
+  // topics, stories, scheduling
+  'topics_one': '{n} mavzu', 'topics_many': '{n} mavzu', 'view_as_messages': "Xabarlar ko'rinishida",
+  'my_story': 'Mening hikoyam', 'story_unsupported': "Bu hikoya turi qo'llab-quvvatlanmaydi",
+  'send_silent': 'Ovozsiz yuborish', 'send_scheduled': 'Rejalashtirib yuborish', 'message_scheduled': 'Xabar rejalashtirildi',
+  'scheduled_messages': 'Rejalashtirilgan xabarlar', 'scheduled_empty': "Rejalashtirilgan xabarlar yo'q",
+  'scheduled_when_online': 'Suhbatdosh onlayn bo\'lganda', 'send_now': 'Hozir yuborish', 'reschedule': "Vaqtini o'zgartirish",
+  // passcode
+  'passcode_lock': 'Parol bilan qulflash', 'passcode_hint': "Ilovani ochish uchun 4 xonali PIN so'raladi",
+  'passcode_enter': 'PIN kodni kiriting', 'passcode_new': 'Yangi PIN kod', 'passcode_repeat': 'PIN kodni takrorlang',
+  'passcode_wrong': "Noto'g'ri PIN kod", 'passcode_mismatch': 'PIN kodlar mos kelmadi', 'passcode_wait': '{seconds} soniyadan keyin urinib ko\'ring',
+  'passcode_change': "PIN kodni o'zgartirish", 'passcode_auto_lock': 'Avtomatik qulflash', 'passcode_immediately': 'Darhol',
+  'passcode_after_minutes': '{n} daqiqadan keyin', 'passcode_lock_now': 'Hozir qulflash',
+  // chat type tabs
+  'chat_type_tabs': "Chat turlari bo'yicha tablar", 'chat_type_tabs_hint': 'Shaxsiy, guruhlar, kanallar, botlar va o\'qilmaganlar',
+  'tab_private': 'Shaxsiy', 'tab_group': 'Guruhlar', 'tab_channel': 'Kanallar', 'tab_bot': 'Botlar', 'tab_unread': "O'qilmagan",
+  'gif': 'GIF',
 };
 
 const _ru = <String, String>{
@@ -253,6 +279,32 @@ const _ru = <String, String>{
   'err_AICOMPOSE_FLOOD_PREMIUM': 'Лимит AI исчерпан — нужен Telegram Premium',
   'err_PREMIUM_ACCOUNT_REQUIRED': 'Нужен Telegram Premium',
   'err_FLOOD_WAIT': 'Слишком много попыток. Попробуйте позже.',
+  // bots, mini apps, payments
+  'bot_keyboard': 'Клавиатура бота', 'bot_start': 'НАЧАТЬ', 'close': 'Закрыть', 'enter_password': 'Введите пароль',
+  'open_link': 'Открыть ссылку', 'reload': 'Перезагрузить',
+  'login_url_title': 'Вход на сайт', 'login_url_text': 'Войти на {domain} с помощью аккаунта Telegram?',
+  'login_url_write': 'Разрешить {bot} писать вам', 'login_url_confirm': 'Войти',
+  'webapp_close_title': 'Закрыть приложение', 'webapp_close_confirm': 'Изменения могут не сохраниться. Закрыть?',
+  'share_phone_title': 'Поделиться номером', 'share_phone_text': '{bot} запрашивает ваш номер телефона. Поделиться?',
+  'share_location_title': 'Поделиться геопозицией', 'share_location_text': '{bot} запрашивает вашу геопозицию. Поделиться?',
+  'pay': 'Оплатить', 'test_invoice': '(тест)', 'stars_pay_confirm': 'Оплатить {count} ⭐ Telegram Stars для {bot}?',
+  'payment_done': 'Оплата прошла', 'payment_card_unsupported': 'Оплата картой пока не поддерживается. Оплатите звёздами Telegram или используйте официальное приложение Telegram.',
+  // topics, stories, scheduling
+  'topics_one': '{n} тема', 'topics_few': '{n} темы', 'topics_many': '{n} тем', 'view_as_messages': 'Показать как сообщения',
+  'my_story': 'Моя история', 'story_unsupported': 'Этот тип истории не поддерживается',
+  'send_silent': 'Отправить без звука', 'send_scheduled': 'Отложенная отправка', 'message_scheduled': 'Сообщение запланировано',
+  'scheduled_messages': 'Отложенные сообщения', 'scheduled_empty': 'Нет отложенных сообщений',
+  'scheduled_when_online': 'Когда собеседник будет в сети', 'send_now': 'Отправить сейчас', 'reschedule': 'Изменить время',
+  // passcode
+  'passcode_lock': 'Код-пароль', 'passcode_hint': 'Для входа в приложение потребуется 4-значный PIN',
+  'passcode_enter': 'Введите PIN-код', 'passcode_new': 'Новый PIN-код', 'passcode_repeat': 'Повторите PIN-код',
+  'passcode_wrong': 'Неверный PIN-код', 'passcode_mismatch': 'PIN-коды не совпадают', 'passcode_wait': 'Повторите через {seconds} с',
+  'passcode_change': 'Сменить PIN-код', 'passcode_auto_lock': 'Автоблокировка', 'passcode_immediately': 'Сразу',
+  'passcode_after_minutes': 'Через {n} мин', 'passcode_lock_now': 'Заблокировать сейчас',
+  // chat type tabs
+  'chat_type_tabs': 'Вкладки по типам чатов', 'chat_type_tabs_hint': 'Личные, группы, каналы, боты и непрочитанные',
+  'tab_private': 'Личные', 'tab_group': 'Группы', 'tab_channel': 'Каналы', 'tab_bot': 'Боты', 'tab_unread': 'Непрочитанные',
+  'gif': 'GIF',
 };
 
 const _en = <String, String>{
@@ -370,4 +422,30 @@ const _en = <String, String>{
   'err_AICOMPOSE_FLOOD_PREMIUM': 'AI limit reached — Telegram Premium is required to continue',
   'err_PREMIUM_ACCOUNT_REQUIRED': 'Telegram Premium is required',
   'err_FLOOD_WAIT': 'Too many attempts. Please try again later.',
+  // bots, mini apps, payments
+  'bot_keyboard': 'Bot keyboard', 'bot_start': 'START', 'close': 'Close', 'enter_password': 'Enter password',
+  'open_link': 'Open link', 'reload': 'Reload',
+  'login_url_title': 'Log in', 'login_url_text': 'Log in to {domain} with your Telegram account?',
+  'login_url_write': 'Allow {bot} to message you', 'login_url_confirm': 'Log in',
+  'webapp_close_title': 'Close app', 'webapp_close_confirm': 'Changes you made may not be saved. Close anyway?',
+  'share_phone_title': 'Share phone number', 'share_phone_text': '{bot} is asking for your phone number. Share it?',
+  'share_location_title': 'Share location', 'share_location_text': '{bot} is asking for your location. Share it?',
+  'pay': 'Pay', 'test_invoice': '(test)', 'stars_pay_confirm': 'Pay {count} ⭐ Telegram Stars to {bot}?',
+  'payment_done': 'Payment completed', 'payment_card_unsupported': 'Card payments are not supported yet. Pay with Telegram Stars or use the official Telegram app.',
+  // topics, stories, scheduling
+  'topics_one': '{n} topic', 'topics_many': '{n} topics', 'view_as_messages': 'View as messages',
+  'my_story': 'My story', 'story_unsupported': 'This story type is not supported',
+  'send_silent': 'Send without sound', 'send_scheduled': 'Schedule message', 'message_scheduled': 'Message scheduled',
+  'scheduled_messages': 'Scheduled messages', 'scheduled_empty': 'No scheduled messages',
+  'scheduled_when_online': 'When online', 'send_now': 'Send now', 'reschedule': 'Reschedule',
+  // passcode
+  'passcode_lock': 'Passcode lock', 'passcode_hint': 'A 4-digit PIN is required to open the app',
+  'passcode_enter': 'Enter your PIN', 'passcode_new': 'New PIN', 'passcode_repeat': 'Repeat the PIN',
+  'passcode_wrong': 'Wrong PIN', 'passcode_mismatch': "PINs don't match", 'passcode_wait': 'Try again in {seconds} s',
+  'passcode_change': 'Change PIN', 'passcode_auto_lock': 'Auto-lock', 'passcode_immediately': 'Immediately',
+  'passcode_after_minutes': 'After {n} min', 'passcode_lock_now': 'Lock now',
+  // chat type tabs
+  'chat_type_tabs': 'Chat type tabs', 'chat_type_tabs_hint': 'Personal, groups, channels, bots and unread',
+  'tab_private': 'Personal', 'tab_group': 'Groups', 'tab_channel': 'Channels', 'tab_bot': 'Bots', 'tab_unread': 'Unread',
+  'gif': 'GIF',
 };
