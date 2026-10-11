@@ -31,12 +31,16 @@ class CrashReporting {
   }
 
   static SentryEvent? _scrub(SentryEvent event, Hint hint) {
-    return event.copyWith(
-      user: null,
-      request: null,
-      breadcrumbs: const [],
-      message: event.message == null ? null : SentryMessage(redactSecrets(event.message!.formatted)),
-      exceptions: event.exceptions?.map((e) => e.copyWith(value: e.value == null ? null : redactSecrets(e.value!))).toList(),
-    );
+    event
+      ..user = null
+      ..request = null
+      ..breadcrumbs = const [];
+    final message = event.message;
+    if (message != null) event.message = SentryMessage(redactSecrets(message.formatted));
+    for (final exception in event.exceptions ?? const <SentryException>[]) {
+      final value = exception.value;
+      if (value != null) exception.value = redactSecrets(value);
+    }
+    return event;
   }
 }

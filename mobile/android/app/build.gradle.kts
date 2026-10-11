@@ -33,15 +33,13 @@ android {
 
     defaultConfig {
         applicationId = "uz.sado.app"
-        // TDLib, the audio recorder and WebView-free media stack need API 24+.
+        // TDLib and the audio recorder need API 24+.
         minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            // Must match the ABIs libtdjson.so is built for (tool/build_tdlib_android.sh).
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
+        // ABIs: Flutter's Gradle plugin limits non-split builds to armeabi-v7a/arm64-v8a/x86_64, the same
+        // set tool/build_tdlib_android.sh builds libtdjson.so for; --split-per-abi configures splits itself.
     }
 
     signingConfigs {
